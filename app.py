@@ -20,8 +20,8 @@ except ImportError:
 
 # Configuration Streamlit Mobile & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Futures USDT Pro",
-    page_icon="🎛️",
+    page_title="Cockpit & Auto-Trader USDT Pro",
+    page_icon="🤖",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -38,6 +38,7 @@ st.markdown(
     .mini-card-scalping { background-color: #1C1608; border-radius: 8px; padding: 10px; border-top: 4px solid #FF9100; margin-bottom: 8px; min-height: 110px; }
     .mini-card-ultrascalp { background-color: #21090D; border-radius: 8px; padding: 10px; border-top: 4px solid #FF1744; margin-bottom: 8px; min-height: 110px; }
     
+    .pos-card { background-color: #151A24; border-radius: 8px; padding: 14px; border: 1px solid #00E676; margin-bottom: 10px; }
     .alert-card-long { background-color: #082618; border-radius: 8px; padding: 14px; border-left: 5px solid #00E676; margin-bottom: 10px; }
     .alert-card-short { background-color: #2D0C13; border-radius: 8px; padding: 14px; border-left: 5px solid #FF1744; margin-bottom: 10px; }
     .opt-price { color: #FFD700; font-size: 18px; font-weight: bold; }
@@ -61,6 +62,7 @@ PAIRES_RADAR = [
 ]
 analyzer = SentimentIntensityAnalyzer()
 
+# États globaux de Session
 if "memoire_par_profil" not in st.session_state:
     st.session_state.memoire_par_profil = {
         "Conservateur": {},
@@ -68,6 +70,20 @@ if "memoire_par_profil" not in st.session_state:
         "Scalping 1m": {},
         "Ultra-Scalp": {},
     }
+
+if "auto_trader_actif" not in st.session_state:
+    st.session_state.auto_trader_actif = False
+
+if "auto_solde" not in st.session_state:
+    st.session_state.auto_solde = 1000.0
+
+if "auto_positions" not in st.session_state:
+    st.session_state.auto_positions = (
+        {}
+    )  # Paire -> {sens, entree, sl, tp1, tp2, marge, levier, tp1_hit}
+
+if "auto_historique" not in st.session_state:
+    st.session_state.auto_historique = []
 
 
 def formater_prix(p):
@@ -138,7 +154,7 @@ def charger_news_ia():
         return 5, []
 
 
-# Moteur Validé par le Banc d'Essai
+# Moteur d'Analyse
 @st.cache_data(ttl=10)
 def analyser_marche_harmonise(profil_court):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
@@ -146,34 +162,30 @@ def analyser_marche_harmonise(profil_court):
     en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
 
     if profil_court == "Conservateur":
-        intervalle = "15m"
-        periode = "5d"
-        lookback = 20
+        intervalle, periode, lookback = "15m", "5d", 20
         mult_sl, mult_tp1, mult_tp2 = 0.40, 1.8, 3.5
     elif profil_court == "Intraday":
-        intervalle = "5m"
-        periode = "2d"
-        lookback = 15
+        intervalle, periode, lookback = "5m", "2d", 15
         mult_sl, mult_tp1, mult_tp2 = 0.35, 1.8, 3.2
     elif profil_court == "Scalping 1m":
-        intervalle = "1m"
-        periode = "1d"
-        lookback = 10
-        mult_sl, mult_tp1, mult_tp2 = 0.30, 1.8, 3.5  # 🌟 x100 sur 1m (+120%)
+        intervalle, periode, lookback = "1m", "1d", 10
+        mult_sl, mult_tp1, mult_tp2 = 0.30, 1.8, 3.5
     else:  # Ultra-Scalp
-        intervalle = "1m"
-        periode = "1d"
-        lookback = 8
-        mult_sl, mult_tp1, mult_tp2 = 0.25, 1.8, 3.8  # 🌟 x150 sur 1m (+360%)
+        intervalle, periode, lookback = "1m", "1d", 8
+        mult_sl, mult_tp1, mult_tp2 = 0.25, 1.8, 3.8
 
-    data = yf.download(
-        " ".join(PAIRES_RADAR),
-        interval=intervalle,
-        period=periode,
-        group_by="ticker",
-        auto_adjust=True,
-        progress=False,
-    )
+    try:
+        data = yf.download(
+            " ".join(PAIRES_RADAR),
+            interval=intervalle,
+            period=periode,
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
+        )
+    except Exception:
+        return []
+
     resultats = []
 
     for paire in PAIRES_RADAR:
@@ -193,7 +205,6 @@ def analyser_marche_harmonise(profil_court):
 
             df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
             ema_50 = float(df["EMA_50"].iloc[-1])
-
             df["EMA_9"] = df["Close"].ewm(span=9, adjust=False).mean()
             df["EMA_21"] = df["Close"].ewm(span=21, adjust=False).mean()
             ema_9 = float(df["EMA_9"].iloc[-1])
@@ -241,7 +252,6 @@ def analyser_marche_harmonise(profil_court):
             opt_p, sl, tp1, tp2 = None, None, None, None
             motif = ""
 
-            # 🛡️ CONSERVATEUR (15m x20)
             if profil_court == "Conservateur":
                 if prix < ema_50 and rsi >= 58 and prix < open_p:
                     signal, motif = (
@@ -253,35 +263,23 @@ def analyser_marche_harmonise(profil_court):
                         "🟢 LONG",
                         "Tendance 15m (Sur EMA 50)",
                     )
-
-            # ⚖️ INTRADAY (5m x50)
             elif profil_court == "Intraday":
                 if en_killzone:
                     if (sweep_h or (prix < ema_9)) and rsi >= 60:
                         signal, motif = "🔴 SHORT", "Killzone 5m"
                     elif (sweep_l or (prix > ema_9)) and rsi <= 40:
                         signal, motif = "🟢 LONG", "Killzone 5m"
-
-            # ⚡ SCALPING 1M (1m x100 Momentum)
             elif profil_court == "Scalping 1m":
                 if atr >= 0.08:
                     if (ema_9 < ema_21) and (fvg_bear or rsi >= 60) and (prix < open_p):
-                        signal, motif = (
-                            "🔴 SHORT",
-                            "Momentum 1m (x100)",
-                        )
+                        signal, motif = "🔴 SHORT", "Momentum 1m x100"
                     elif (
                         (ema_9 > ema_21)
                         and (fvg_bull or rsi <= 40)
                         and (prix > open_p)
                     ):
-                        signal, motif = (
-                            "🟢 LONG",
-                            "Momentum 1m (x100)",
-                        )
-
-            # 🔥 ULTRA-SCALP (1m x150 SMC)
-            else:
+                        signal, motif = "🟢 LONG", "Momentum 1m x100"
+            else:  # Ultra-Scalp
                 if atr >= 0.08:
                     if (sweep_h or fvg_bear) and (prix < open_p or rsi >= 58):
                         signal, motif = (
@@ -300,7 +298,6 @@ def analyser_marche_harmonise(profil_court):
                 sl = opt_p + dist_sl
                 tp1 = opt_p - (mult_tp1 * dist_sl)
                 tp2 = opt_p - (mult_tp2 * dist_sl)
-
             elif signal == "🟢 LONG":
                 opt_p = low_s if sweep_l else prix
                 dist_sl = max(opt_p - low + (0.04 * atr), mult_sl * atr)
@@ -313,6 +310,8 @@ def analyser_marche_harmonise(profil_court):
                 {
                     "Paire": nom_paire,
                     "Prix": prix,
+                    "High": high,
+                    "Low": low,
                     "Signal_Detecte": signal,
                     "Motif": motif,
                     "Opt_Price": opt_p,
@@ -329,12 +328,12 @@ def analyser_marche_harmonise(profil_court):
 
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE HARMONISÉ
+# 🎛️ LE CURSEUR MAÎTRE
 # ==========================================================
-st.title("🎛️ Cockpit Futures USDT Pro")
+st.title("🎛️ Cockpit & Auto-Trader USDT Pro")
 
 profil = st.select_slider(
-    "👉 Sélectionnez votre profil actif principal :",
+    "👉 Sélectionnez votre profil actif :",
     options=[
         "🛡️ Conservateur (15m x20)",
         "⚖️ Intraday (5m x50)",
@@ -345,40 +344,41 @@ profil = st.select_slider(
 )
 
 if "Conservateur" in profil:
-    profil_cle = "Conservateur"
-    levier_suggere = 20
-    duree_memoire = 600
-    unite_temps = "15m"
-    desc = "🛡️ **Conservateur (x20) :** Structure 15m. Rendement stable, 0 liquidation."
+    profil_cle, levier_suggere, duree_memoire, unite_temps = (
+        "Conservateur",
+        20,
+        600,
+        "15m",
+    )
 elif "Intraday" in profil:
-    profil_cle = "Intraday"
-    levier_suggere = 50
-    duree_memoire = 300
-    unite_temps = "5m"
-    desc = "⚖️ **Intraday (x50) :** Killzones Londres/NY. Trades de session très propres."
+    profil_cle, levier_suggere, duree_memoire, unite_temps = (
+        "Intraday",
+        50,
+        300,
+        "5m",
+    )
 elif "Scalping" in profil:
-    profil_cle = "Scalping 1m"
-    levier_suggere = 100
-    duree_memoire = 180
-    unite_temps = "1m"
-    desc = "⚡ **Scalping 1m (x100) :** Momentum 1 minute. +120 % de rendement validé."
+    profil_cle, levier_suggere, duree_memoire, unite_temps = (
+        "Scalping 1m",
+        100,
+        180,
+        "1m",
+    )
 else:
-    profil_cle = "Ultra-Scalp"
-    levier_suggere = 150
-    duree_memoire = 120
-    unite_temps = "1m"
-    desc = "🔥 **Ultra-Scalp (x150) :** SMC 1 minute. +360 % de rendement validé (PF 1.62)."
+    profil_cle, levier_suggere, duree_memoire, unite_temps = (
+        "Ultra-Scalp",
+        150,
+        120,
+        "1m",
+    )
 
-st.markdown(f'<div class="profile-card">{desc}</div>', unsafe_allow_html=True)
-
-# Contrôles Auto-Refresh
 col_ref, col_time = st.columns([1, 1])
 with col_ref:
     activer_auto = st.toggle("🔄 Auto-Refresh Live", value=True)
     if activer_auto:
         sec = 5 if "1m" in unite_temps else 10
         if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_final_pro")
+            st_autorefresh(interval=sec * 1000, key="loop_master_unified")
 with col_time:
     maintenant_ts = time.time()
     st.caption(
@@ -386,7 +386,7 @@ with col_time:
     )
 
 # ==========================================================
-# 🧠 SYNCHRONISATION DES 4 PROFILS GAGNANTS
+# 🧠 SYNCHRONISATION MULTI-PROFILS
 # ==========================================================
 durees_profils = {
     "Conservateur": 600,
@@ -395,8 +395,13 @@ durees_profils = {
     "Ultra-Scalp": 120,
 }
 
+donnees_du_profil_actif = []
+
 for p_nom in ["Conservateur", "Intraday", "Scalping 1m", "Ultra-Scalp"]:
     donnees_p = analyser_marche_harmonise(p_nom)
+    if p_nom == profil_cle:
+        donnees_du_profil_actif = donnees_p
+
     for d in donnees_p:
         paire = d["Paire"]
         if d["Signal_Detecte"] is not None:
@@ -420,23 +425,180 @@ for p_nom in ["Conservateur", "Intraday", "Scalping 1m", "Ultra-Scalp"]:
         del st.session_state.memoire_par_profil[p_nom][p]
 
 # ==========================================================
+# 🤖 MOTEUR D'AUTO-TRADING INTÉGRÉ (EN ARRIÈRE-PLAN)
+# ==========================================================
+if st.session_state.auto_trader_actif:
+    for d in donnees_du_profil_actif:
+        paire = d["Paire"]
+        prix_actuel = d["Prix"]
+        high = d["High"]
+        low = d["Low"]
+
+        # 1. GESTION DES POSITIONS OUVERTES
+        if paire in st.session_state.auto_positions:
+            pos = st.session_state.auto_positions[paire]
+            sens = pos["sens"]
+            p_entree = pos["entree"]
+            sl = pos["sl"]
+            tp1 = pos["tp1"]
+            tp2 = pos["tp2"]
+            notionnel = pos["marge"] * pos["levier"]
+
+            if "SHORT" in sens:
+                # TP1
+                if not pos["tp1_hit"] and low <= tp1:
+                    pos["tp1_hit"] = True
+                    pnl_50 = (
+                        (p_entree - tp1) / p_entree
+                    ) * (notionnel * 0.5)
+                    st.session_state.auto_solde += pnl_50
+                    pos["sl"] = p_entree  # Breakeven !
+                # TP2
+                elif pos["tp1_hit"] and low <= tp2:
+                    pnl_runner = (
+                        (p_entree - tp2) / p_entree
+                    ) * (notionnel * 0.5)
+                    pnl_tot = (
+                        (p_entree - tp1) / p_entree
+                    ) * (notionnel * 0.5) + pnl_runner
+                    st.session_state.auto_solde += pnl_runner
+                    st.session_state.auto_historique.append(
+                        {
+                            "paire": paire,
+                            "sens": sens,
+                            "pnl": pnl_tot,
+                            "win": True,
+                            "date": datetime.datetime.now().strftime(
+                                "%H:%M:%S"
+                            ),
+                        }
+                    )
+                    del st.session_state.auto_positions[paire]
+                # SL
+                elif high >= sl:
+                    if pos["tp1_hit"]:
+                        pnl_tot = (
+                            (p_entree - tp1) / p_entree
+                        ) * (notionnel * 0.5)
+                        st.session_state.auto_historique.append(
+                            {
+                                "paire": paire,
+                                "sens": sens,
+                                "pnl": pnl_tot,
+                                "win": True,
+                                "date": datetime.datetime.now().strftime(
+                                    "%H:%M:%S"
+                                ),
+                            }
+                        )
+                    else:
+                        pnl = (
+                            (p_entree - sl) / p_entree
+                        ) * notionnel
+                        st.session_state.auto_solde += pnl
+                        st.session_state.auto_historique.append(
+                            {
+                                "paire": paire,
+                                "sens": sens,
+                                "pnl": pnl,
+                                "win": False,
+                                "date": datetime.datetime.now().strftime(
+                                    "%H:%M:%S"
+                                ),
+                            }
+                        )
+                    del st.session_state.auto_positions[paire]
+
+            elif "LONG" in sens:
+                if not pos["tp1_hit"] and high >= tp1:
+                    pos["tp1_hit"] = True
+                    pnl_50 = (
+                        (tp1 - p_entree) / p_entree
+                    ) * (notionnel * 0.5)
+                    st.session_state.auto_solde += pnl_50
+                    pos["sl"] = p_entree  # Breakeven !
+                elif pos["tp1_hit"] and high >= tp2:
+                    pnl_runner = (
+                        (tp2 - p_entree) / p_entree
+                    ) * (notionnel * 0.5)
+                    pnl_tot = (
+                        (tp1 - p_entree) / p_entree
+                    ) * (notionnel * 0.5) + pnl_runner
+                    st.session_state.auto_solde += pnl_runner
+                    st.session_state.auto_historique.append(
+                        {
+                            "paire": paire,
+                            "sens": sens,
+                            "pnl": pnl_tot,
+                            "win": True,
+                            "date": datetime.datetime.now().strftime(
+                                "%H:%M:%S"
+                            ),
+                        }
+                    )
+                    del st.session_state.auto_positions[paire]
+                elif low <= sl:
+                    if pos["tp1_hit"]:
+                        pnl_tot = (
+                            (tp1 - p_entree) / p_entree
+                        ) * (notionnel * 0.5)
+                        st.session_state.auto_historique.append(
+                            {
+                                "paire": paire,
+                                "sens": sens,
+                                "pnl": pnl_tot,
+                                "win": True,
+                                "date": datetime.datetime.now().strftime(
+                                    "%H:%M:%S"
+                                ),
+                            }
+                        )
+                    else:
+                        pnl = ((sl - p_entree) / p_entree) * notionnel
+                        st.session_state.auto_solde += pnl
+                        st.session_state.auto_historique.append(
+                            {
+                                "paire": paire,
+                                "sens": sens,
+                                "pnl": pnl,
+                                "win": False,
+                                "date": datetime.datetime.now().strftime(
+                                    "%H:%M:%S"
+                                ),
+                            }
+                        )
+                    del st.session_state.auto_positions[paire]
+
+        # 2. OUVERTURE AUTOMATIQUE DE NOUVELLES POSITIONS
+        elif len(st.session_state.auto_positions) < 2 and d["Signal_Detecte"]:
+            st.session_state.auto_positions[paire] = {
+                "sens": d["Signal_Detecte"],
+                "entree": d["Opt_Price"],
+                "sl": d["SL"],
+                "tp1": d["TP1"],
+                "tp2": d["TP2"],
+                "marge": 100.0,
+                "levier": levier_suggere,
+                "tp1_hit": False,
+                "date_open": datetime.datetime.now().strftime("%H:%M:%S"),
+            }
+
+# ==========================================================
 # 👀 VUE PANORAMIQUE DES 4 STYLES
 # ==========================================================
 st.markdown("### 👀 Vue Panoramique (Opportunités sur les 4 Styles) :")
 
 col_c, col_i, col_s, col_u = st.columns(4)
-
 with col_c:
     st.markdown(
-        """<div class="mini-card-conservateur">
-    <b>🛡️ Conservateur (15m x20)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><hr style="margin:4px 0;">""",
         unsafe_allow_html=True,
     )
     sigs_c = st.session_state.memoire_par_profil["Conservateur"]
     if sigs_c:
-        for paire, info in sigs_c.items():
+        for p, info in sigs_c.items():
             st.markdown(
-                f"**{info['signal']}** `{paire}`<br>🎯 Limit: {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
@@ -448,15 +610,14 @@ with col_c:
 
 with col_i:
     st.markdown(
-        """<div class="mini-card-intraday">
-    <b>⚖️ Intraday (5m x50)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><hr style="margin:4px 0;">""",
         unsafe_allow_html=True,
     )
     sigs_i = st.session_state.memoire_par_profil["Intraday"]
     if sigs_i:
-        for paire, info in sigs_i.items():
+        for p, info in sigs_i.items():
             st.markdown(
-                f"**{info['signal']}** `{paire}`<br>🎯 Limit: {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
@@ -468,15 +629,14 @@ with col_i:
 
 with col_s:
     st.markdown(
-        """<div class="mini-card-scalping">
-    <b>⚡ Scalping (1m x100)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-scalping"><b>⚡ Scalping (1m x100)</b><hr style="margin:4px 0;">""",
         unsafe_allow_html=True,
     )
     sigs_s = st.session_state.memoire_par_profil["Scalping 1m"]
     if sigs_s:
-        for paire, info in sigs_s.items():
+        for p, info in sigs_s.items():
             st.markdown(
-                f"**{info['signal']}** `{paire}`<br>🎯 Limit: {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
@@ -488,15 +648,14 @@ with col_s:
 
 with col_u:
     st.markdown(
-        """<div class="mini-card-ultrascalp">
-    <b>🔥 Ultra-Scalp (1m x150)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-ultrascalp"><b>🔥 Ultra-Scalp (1m x150)</b><hr style="margin:4px 0;">""",
         unsafe_allow_html=True,
     )
     sigs_u = st.session_state.memoire_par_profil["Ultra-Scalp"]
     if sigs_u:
-        for paire, info in sigs_u.items():
+        for p, info in sigs_u.items():
             st.markdown(
-                f"**{info['signal']}** `{paire}`<br>🎯 Limit: {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
@@ -509,23 +668,80 @@ with col_u:
 st.markdown("---")
 
 # ==========================================================
-# 📱 ONGLETS DÉTAILLÉS
+# 📱 ONGLETS PRINCIPAUX
 # ==========================================================
-tab_radar, tab_calc, tab_marche, tab_journal = st.tabs(
+tab_auto, tab_radar, tab_calc, tab_marche, tab_journal = st.tabs(
     [
-        f"⚡ Radar Détaillé ({profil_cle})",
+        "🤖 Auto-Trader Live",
+        f"⚡ Radar ({profil_cle})",
         f"🧮 Calculateur (x{levier_suggere})",
-        "🌍 Baromètre IA",
+        "🌍 Marché & News",
         "📊 Journal Trades",
     ]
 )
 
-# 1. RADAR DÉTAILLÉ
+# ----------------------------------------------------------
+# ONGLET 1 : AUTO-TRADER EN DIRECT
+# ----------------------------------------------------------
+with tab_auto:
+    col_t1, col_t2 = st.columns([2, 1])
+    with col_t1:
+        st.subheader("🤖 Moteur d'Auto-Exécution (Mode Simulation)")
+        pnl_auto = st.session_state.auto_solde - 1000.0
+        st.markdown(
+            f"💼 **Solde Virtuel :** `{st.session_state.auto_solde:.2f} USDT`  |  **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
+            unsafe_allow_html=True,
+        )
+
+    with col_t2:
+        st.session_state.auto_trader_actif = st.toggle(
+            "⚡ ACTIVER L'AUTO-TRADING",
+            value=st.session_state.auto_trader_actif,
+        )
+
+    if st.session_state.auto_trader_actif:
+        st.success(
+            f"🟢 **Auto-Trader EN LIGNE** : Le bot scanne et exécute automatiquement les trades du profil **{profil_cle} (x{levier_suggere})** !"
+        )
+    else:
+        st.info(
+            "⚪ **Auto-Trader en Pause** : Activez l'interrupteur ci-dessus pour laisser le bot trader seul."
+        )
+
+    st.markdown("#### 🚀 Positions en cours d'exécution automatique :")
+    if st.session_state.auto_positions:
+        for p, pos in list(st.session_state.auto_positions.items()):
+            st.markdown(
+                f"""
+            <div class="pos-card">
+                <b>🪙 {p} ({pos['sens']} x{pos['levier']})</b> | Ouvert à {pos.get('date_open', '')}<br>
+                🎯 <b>Entrée :</b> {formater_prix(pos['entree'])} USDT | 🛑 <b>Stop :</b> {formater_prix(pos['sl'])} USDT<br>
+                💰 <b>TP1 (50%) :</b> {formater_prix(pos['tp1'])} USDT [{'✅ Atteint (Breakeven actif)' if pos['tp1_hit'] else '⏳ En attente'}]<br>
+                🚀 <b>TP2 Runner :</b> {formater_prix(pos['tp2'])} USDT
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption(
+            "👀 Aucune position ouverte. Le bot veille et prendra position dès qu'un signal apparaît."
+        )
+
+    st.markdown("#### 📜 Historique des trades fermés en direct :")
+    if st.session_state.auto_historique:
+        df_hist = pd.DataFrame(st.session_state.auto_historique)
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Aucun trade clôturé pour le moment.")
+
+# ----------------------------------------------------------
+# ONGLET 2 : RADAR DÉTAILLÉ
+# ----------------------------------------------------------
 with tab_radar:
     memoire_active = st.session_state.memoire_par_profil[profil_cle]
     if memoire_active:
         st.subheader(f"🎯 Opportunités en cours ({profil_cle}) :")
-        for paire, info in list(memoire_active.items()):
+        for p, info in list(memoire_active.items()):
             temps_restant = int(
                 durees_profils[profil_cle]
                 - (maintenant_ts - info["timestamp"])
@@ -542,23 +758,21 @@ with tab_radar:
                 f"""
             <div class="{classe}">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3>⚡ {paire} : {info['signal']} ({info['motif']})</h3>
+                    <h3>⚡ {p} : {info['signal']} ({info['motif']})</h3>
                     <span class="timer-badge">⏱️ Valide : {minutes_rest}m {secondes_rest:02d}s</span>
                 </div>
                 🎯 <span class="opt-price">ENTRÉE OPTIMALE (Ordre Limit) : {formater_prix(info['prix_entree'])} USDT</span><br>
-                🛑 <b>Stop-Loss (One Candle) :</b> {formater_prix(info['sl'])} USDT<br>
-                💰 <b>TP1 (Sécuriser 50% + Breakeven) :</b> {formater_prix(info['tp1'])} USDT<br>
-                🚀 <span class="tp-runner">TP2 RUNNER (Gros Coup) : {formater_prix(info['tp2'])} USDT</span><br>
-                <small>💡 <i>Méthode Pro : Clôturez 50% au TP1 et mettez le Stop à Breakeven pour laisser courir le TP2 sans risque !</i></small>
+                🛑 <b>Stop-Loss :</b> {formater_prix(info['sl'])} USDT<br>
+                💰 <b>TP1 (50% + Breakeven) :</b> {formater_prix(info['tp1'])} USDT<br>
+                🚀 <span class="tp-runner">TP2 RUNNER : {formater_prix(info['tp2'])} USDT</span>
             </div>
             """,
                 unsafe_allow_html=True,
             )
         st.markdown("---")
 
-    donnees_affichees = analyser_marche_harmonise(profil_cle)
     lignes_tableau = []
-    for d in donnees_affichees:
+    for d in donnees_du_profil_actif:
         paire = d["Paire"]
         statut = (
             memoire_active[paire]["signal"]
@@ -578,15 +792,16 @@ with tab_radar:
     st.subheader(f"📊 Surveillance des 7 Paires en direct ({unite_temps})")
     st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
-# 2. CALCULATEUR
+# ----------------------------------------------------------
+# ONGLET 3 : CALCULATEUR
+# ----------------------------------------------------------
 with tab_calc:
-    st.subheader(f"🧮 Calculateur de Risque (Calibré pour {profil})")
-
+    st.subheader(f"🧮 Calculateur de Risque ({profil})")
     col_p, col_s = st.columns(2)
     liste_options = [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
-    paire = col_p.selectbox("Contrat Futures", liste_options)
-    sens = col_s.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
-    is_long = "LONG" in sens
+    paire_sel = col_p.selectbox("Contrat Futures", liste_options)
+    sens_sel = col_s.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
+    is_long = "LONG" in sens_sel
 
     col_e, col_sl = st.columns(2)
     p_entree = col_e.number_input(
@@ -607,7 +822,6 @@ with tab_calc:
     if (is_long and p_sl < p_entree) or ((not is_long) and p_sl > p_entree):
         distance = abs(p_entree - p_sl)
         pct_dist = distance / p_entree
-
         notionnel = marge_fixe * levier_choisi
         quantite = notionnel / p_entree
         perte_sl = pct_dist * notionnel
@@ -632,61 +846,32 @@ with tab_calc:
         )
         gain_tp1 = (1.8 * distance / p_entree) * notionnel
         gain_tp2 = (3.8 * distance / p_entree) * notionnel
-
         securite_validee = (p_sl > p_liq) if is_long else (p_sl < p_liq)
 
         st.markdown("---")
         st.markdown(
             f"""
         <div class="metric-card">
-            <h3>📋 Ordre MEXC Recommandé (x{levier_choisi}) :</h3>
-            <b>💵 Marge Engagée :</b> <span style="font-size:22px; color:#00E676;"><b>{marge_fixe:.2f} USDT</b></span><br>
-            <b>🚀 Notionnel Contrôlé :</b> <b>{notionnel:,.2f} USDT</b> ({quantite:.4f} {paire.split('/')[0]})<br>
+            <h3>📋 Ordre Recommandé (x{levier_choisi}) :</h3>
+            <b>💵 Marge Engagée :</b> <b>{marge_fixe:.2f} USDT</b> (Notionnel : {notionnel:,.2f} USDT)<br>
             <b>🛑 Perte au Stop-Loss :</b> <span style="color:#FF5252;"><b>-{perte_sl:.2f} USDT</b> ({pct_dist:.2%})</span><br>
-            <b>🎯 Gain au TP1 (50%) :</b> <span style="color:#00E676;"><b>+{gain_tp1:.2f} USDT</b></span> ({formater_prix(tp1)} USDT)<br>
-            <b>🚀 Gain au TP2 RUNNER :</b> <span style="font-size:20px; color:#00E676;"><b>+{gain_tp2:.2f} USDT</b></span> ({formater_prix(tp2)} USDT)<br>
+            <b>🎯 Gain TP1 (50%) :</b> <span style="color:#00E676;"><b>+{gain_tp1:.2f} USDT</b></span> ({formater_prix(tp1)} USDT)<br>
+            <b>🚀 Gain TP2 RUNNER :</b> <span style="font-size:20px; color:#00E676;"><b>+{gain_tp2:.2f} USDT</b></span> ({formater_prix(tp2)} USDT)<br>
             <b>💀 PRIX DE LIQUIDATION :</b> <b>{formater_prix(p_liq)} USDT</b> (Distance : {formater_prix(distance_liq_dollars)} USDT)
         </div>
         """,
             unsafe_allow_html=True,
         )
 
-        if securite_validee and (pct_dist < dist_liq_pct * 0.7):
-            st.success("✅ SÉCURITÉ VALIDÉE : Stop-Loss placé avant la liquidation.")
-        else:
+        if not securite_validee or (pct_dist >= dist_liq_pct * 0.7):
             st.markdown(
-                f"""
-            <div class="danger-liq">
-                🚨 ATTENTION DANGER LIQUIDATION !<br>
-                Votre Stop-Loss est trop éloigné ({pct_dist:.2%}) par rapport à la liquidation ({dist_liq_pct:.2%}).<br>
-                Rapprochez votre Stop ou diminuez le levier !
-            </div>
-            """,
+                '<div class="danger-liq">🚨 DANGER : Stop-Loss trop proche de la liquidation !</div>',
                 unsafe_allow_html=True,
             )
 
-        if st.button("💾 Sauvegarder dans mon Journal"):
-            with open(
-                FICHIER_JOURNAL, mode="a", newline="", encoding="utf-8"
-            ) as f:
-                writer = csv.writer(f)
-                writer.writerow(
-                    [
-                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        paire,
-                        "LONG" if is_long else "SHORT",
-                        f"{p_entree}",
-                        f"{p_sl}",
-                        f"{tp2}",
-                        f"{marge_fixe:.2f}",
-                        f"x{levier_choisi}",
-                        "EN_COURS",
-                        "0.00",
-                    ]
-                )
-            st.success("Trade archivé avec succès !")
-
-# 3. MARCHÉ & NEWS IA
+# ----------------------------------------------------------
+# ONGLET 4 : MARCHÉ & NEWS IA
+# ----------------------------------------------------------
 with tab_marche:
     fg_score, fg_sentiment = charger_fear_and_greed()
     score_ia, news = charger_news_ia()
@@ -720,7 +905,9 @@ with tab_marche:
     for tag, titre in news:
         st.markdown(f"**{tag}** — {titre}")
 
-# 4. JOURNAL DE TRADES
+# ----------------------------------------------------------
+# ONGLET 5 : JOURNAL DES TRADES
+# ----------------------------------------------------------
 with tab_journal:
     st.subheader("📊 Historique des Trades USDT")
     if os.path.exists(FICHIER_JOURNAL):
