@@ -35,6 +35,7 @@ st.markdown(
     .alert-card-long { background-color: #082618; border-radius: 8px; padding: 14px; border-left: 5px solid #00E676; margin-bottom: 10px; }
     .alert-card-short { background-color: #2D0C13; border-radius: 8px; padding: 14px; border-left: 5px solid #FF1744; margin-bottom: 10px; }
     .opt-price { color: #FFD700; font-size: 18px; font-weight: bold; }
+    .tp-runner { color: #00E676; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #1F2430; color: #00E676; padding: 3px 8px; border-radius: 5px; font-size: 13px; font-weight: bold; }
     .danger-liq { background-color: #4A0000; border-radius: 8px; padding: 10px; border: 1px solid #FF1744; color: #FFF; font-weight: bold; }
 </style>
@@ -128,38 +129,41 @@ def charger_news_ia():
         return 5, []
 
 
-# Moteur Différencié selon les 4 nouveaux leviers
+# Moteur avec TP Échelonné (TP1 Sécurité + TP2 Runner Ambitieux)
 @st.cache_data(ttl=10)
 def analyser_marche_profil_reel(profil_nom):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
     en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
 
-    # 1. PARAMÉTRAGE DIFFÉRENCIÉ STRICT
     if "Conservateur" in profil_nom:
         intervalle = "15m"
         periode = "5d"
-        lookback = 30  # Structure 15m
+        lookback = 30
         mult_sl = 0.50
-        mult_tp = 3.0
+        mult_tp1 = 2.0
+        mult_tp2 = 4.0  # R/R 1:4
     elif "Intraday" in profil_nom:
         intervalle = "5m"
         periode = "2d"
-        lookback = 20  # Structure Killzone
+        lookback = 20
         mult_sl = 0.40
-        mult_tp = 2.5
+        mult_tp1 = 2.0
+        mult_tp2 = 3.5
     elif "Scalping" in profil_nom:
         intervalle = "5m"
         periode = "2d"
-        lookback = 10  # Scalping dynamique
+        lookback = 10
         mult_sl = 0.30
-        mult_tp = 2.0
+        mult_tp1 = 1.8
+        mult_tp2 = 3.5
     else:  # Ultra-Scalp
         intervalle = "1m"
         periode = "1d"
-        lookback = 8  # 1-minute pur
+        lookback = 8
         mult_sl = 0.25
-        mult_tp = 2.0
+        mult_tp1 = 1.8
+        mult_tp2 = 3.8  # Objectif Runner ambitieux sur 1m !
 
     data = yf.download(
         " ".join(PAIRES_RADAR),
@@ -234,18 +238,19 @@ def analyser_marche_profil_reel(profil_nom):
             )
 
             signal = None
-            opt_p, sl, tp = None, None, None
+            opt_p, sl, tp1, tp2 = None, None, None, None
             motif = ""
 
-            # 🛡️ 1. CONSERVATEUR (15m x20) : Tendance EMA 50 + Sweeps 15m
+            # 🛡️ 1. CONSERVATEUR (15m x20)
             if "Conservateur" in profil_nom:
                 if prix < ema_50 and sweep_h and rsi >= 65 and (prix < open_p):
                     signal = "🔴 SHORT"
-                    motif = "SMC Majeur 15m (Sous EMA 50)"
+                    motif = "SMC Majeur 15m"
                     opt_p = high_s
                     dist_sl = max(high - opt_p + (0.05 * atr), mult_sl * atr)
                     sl = opt_p + dist_sl
-                    tp = opt_p - (mult_tp * dist_sl)
+                    tp1 = opt_p - (mult_tp1 * dist_sl)
+                    tp2 = opt_p - (mult_tp2 * dist_sl)
                 elif (
                     prix > ema_50
                     and sweep_l
@@ -253,35 +258,38 @@ def analyser_marche_profil_reel(profil_nom):
                     and (prix > open_p)
                 ):
                     signal = "🟢 LONG"
-                    motif = "SMC Majeur 15m (Sur EMA 50)"
+                    motif = "SMC Majeur 15m"
                     opt_p = low_s
                     dist_sl = max(opt_p - low + (0.05 * atr), mult_sl * atr)
                     sl = opt_p - dist_sl
-                    tp = opt_p + (mult_tp * dist_sl)
+                    tp1 = opt_p + (mult_tp1 * dist_sl)
+                    tp2 = opt_p + (mult_tp2 * dist_sl)
 
-            # ⚖️ 2. INTRADAY (5m x50) : Killzones Londres/NY
+            # ⚖️ 2. INTRADAY (5m x50)
             elif "Intraday" in profil_nom:
                 if en_killzone:
                     if (sweep_h or fvg_bear) and (prix < open_p) and rsi >= 60:
                         signal = "🔴 SHORT"
-                        motif = "Killzone Session (5m)"
+                        motif = "Killzone Session"
                         opt_p = high_s if sweep_h else prix
                         dist_sl = max(high - opt_p + (0.05 * atr), mult_sl * atr)
                         sl = opt_p + dist_sl
-                        tp = opt_p - (mult_tp * dist_sl)
+                        tp1 = opt_p - (mult_tp1 * dist_sl)
+                        tp2 = opt_p - (mult_tp2 * dist_sl)
                     elif (
                         (sweep_l or fvg_bull)
                         and (prix > open_p)
                         and rsi <= 40
                     ):
                         signal = "🟢 LONG"
-                        motif = "Killzone Session (5m)"
+                        motif = "Killzone Session"
                         opt_p = low_s if sweep_l else prix
                         dist_sl = max(opt_p - low + (0.05 * atr), mult_sl * atr)
                         sl = opt_p - dist_sl
-                        tp = opt_p + (mult_tp * dist_sl)
+                        tp1 = opt_p + (mult_tp1 * dist_sl)
+                        tp2 = opt_p + (mult_tp2 * dist_sl)
 
-            # ⚡ 3. SCALPING (5m x100) : Momentum & FVG Rapide
+            # ⚡ 3. SCALPING (5m x100)
             elif "Scalping" in profil_nom:
                 if (sweep_h or fvg_bear or (ema_9 < ema_21 and rsi >= 62)) and (
                     prix < open_p
@@ -291,7 +299,8 @@ def analyser_marche_profil_reel(profil_nom):
                     opt_p = prix
                     dist_sl = max(high - prix + (0.04 * atr), mult_sl * atr)
                     sl = prix + dist_sl
-                    tp = prix - (mult_tp * dist_sl)
+                    tp1 = prix - (mult_tp1 * dist_sl)
+                    tp2 = prix - (mult_tp2 * dist_sl)
                 elif (
                     sweep_l or fvg_bull or (ema_9 > ema_21 and rsi <= 38)
                 ) and (prix > open_p):
@@ -300,9 +309,10 @@ def analyser_marche_profil_reel(profil_nom):
                     opt_p = prix
                     dist_sl = max(prix - low + (0.04 * atr), mult_sl * atr)
                     sl = prix - dist_sl
-                    tp = prix + (mult_tp * dist_sl)
+                    tp1 = prix + (mult_tp1 * dist_sl)
+                    tp2 = prix + (mult_tp2 * dist_sl)
 
-            # 🔥 4. ULTRA-SCALP (1m x150) : Micro-Pips 1 Minute
+            # 🔥 4. ULTRA-SCALP (1m x150)
             else:
                 if (sweep_h or fvg_bear or rsi >= 58) and (
                     prix < open_p or ema_9 < ema_21
@@ -312,7 +322,10 @@ def analyser_marche_profil_reel(profil_nom):
                     opt_p = prix
                     dist_sl = max(high - prix + (0.03 * atr), mult_sl * atr)
                     sl = prix + dist_sl
-                    tp = prix - (mult_tp * dist_sl)
+                    tp1 = prix - (mult_tp1 * dist_sl)
+                    tp2 = prix - (
+                        mult_tp2 * dist_sl
+                    )  # Objectif Runner 1:3.8 !
                 elif (sweep_l or fvg_bull or rsi <= 42) and (
                     prix > open_p or ema_9 > ema_21
                 ):
@@ -321,7 +334,8 @@ def analyser_marche_profil_reel(profil_nom):
                     opt_p = prix
                     dist_sl = max(prix - low + (0.03 * atr), mult_sl * atr)
                     sl = prix - dist_sl
-                    tp = prix + (mult_tp * dist_sl)
+                    tp1 = prix + (mult_tp1 * dist_sl)
+                    tp2 = prix + (mult_tp2 * dist_sl)
 
             nom_paire = f"{paire.split('-')[0]}/USDT"
             resultats.append(
@@ -332,7 +346,8 @@ def analyser_marche_profil_reel(profil_nom):
                     "Motif": motif,
                     "Opt_Price": opt_p,
                     "SL": sl,
-                    "TP": tp,
+                    "TP1": tp1,
+                    "TP2": tp2,
                     "RSI": f"{rsi:.1f}",
                     "Intervalle": intervalle,
                 }
@@ -343,7 +358,7 @@ def analyser_marche_profil_reel(profil_nom):
 
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE (ÉCHELLE x20 / x50 / x100 / x150)
+# 🎛️ LE CURSEUR MAÎTRE
 # ==========================================================
 st.title("🎛️ Cockpit Futures USDT Pro")
 
@@ -358,33 +373,31 @@ profil = st.select_slider(
     value="⚡ Scalping (5m x100)",
 )
 
-# Réinitialisation propre lors du changement de curseur
 if st.session_state.profil_precedent != profil:
     st.session_state.memoire_signaux = {}
     st.session_state.profil_precedent = profil
     st.cache_data.clear()
 
-# Configuration selon votre nouvelle échelle
 if "Conservateur" in profil:
     levier_suggere = 20
-    duree_memoire = 600  # 10 min
+    duree_memoire = 600
     unite_temps = "15m"
-    desc = "🛡️ **Conservateur (x20) :** Graphiques 15m. Structure majeure + tendance EMA 50. Signaux rares et ultra-filtrés."
+    desc = "🛡️ **Conservateur (x20) :** Structure 15m. TP1 pour sécuriser + TP2 Runner 1:4."
 elif "Intraday" in profil:
     levier_suggere = 50
-    duree_memoire = 300  # 5 min
+    duree_memoire = 300
     unite_temps = "5m"
-    desc = "⚖️ **Intraday (x50) :** Graphiques 5m. Ne trade qu'en Killzones (Londres/NY). Bon équilibre gain/sécurité."
+    desc = "⚖️ **Intraday (x50) :** Killzones Londres/NY. TP1 rapide + TP2 Runner 1:3.5."
 elif "Scalping" in profil:
     levier_suggere = 100
-    duree_memoire = 180  # 3 min
+    duree_memoire = 180
     unite_temps = "5m"
-    desc = "⚡ **Scalping (x100) :** Scalping 5m dynamique. Détection des impulsions rapides de momentum et FVG."
+    desc = "⚡ **Scalping (x100) :** Scalping 5m dynamique. Sorties échelonnées pour maximiser le gain."
 else:
     levier_suggere = 150
-    duree_memoire = 120  # 2 min
+    duree_memoire = 120
     unite_temps = "1m"
-    desc = "🔥 **Ultra-Scalp (x150) :** Flux 1 minute direct. Micro-scalping à haute fréquence, sorties éclair."
+    desc = "🔥 **Ultra-Scalp (x150) :** Flux 1m direct. TP1 (Breakeven immédiat) + TP2 Runner pour capter les vraies impulsions (+50 à +120 USDT)."
 
 st.markdown(f'<div class="profile-card">{desc}</div>', unsafe_allow_html=True)
 
@@ -395,7 +408,7 @@ with col_ref:
     if activer_auto:
         sec = 5 if "Ultra" in profil else 10
         if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_master_v2")
+            st_autorefresh(interval=sec * 1000, key="loop_master_v3")
 with col_time:
     maintenant_ts = time.time()
     st.caption(
@@ -415,7 +428,8 @@ for d in donnees_marche:
             "motif": d["Motif"],
             "prix_entree": d["Opt_Price"],
             "sl": d["SL"],
-            "tp": d["TP"],
+            "tp1": d["TP1"],
+            "tp2": d["TP2"],
             "timestamp": maintenant_ts,
         }
 
@@ -439,7 +453,7 @@ tab_radar, tab_calc, tab_marche, tab_journal = st.tabs(
     ]
 )
 
-# 1. RADAR
+# 1. RADAR AVEC TP1 & TP2 RUNNER
 with tab_radar:
     if st.session_state.memoire_signaux:
         st.subheader(f"🎯 Opportunités Validées ({unite_temps}) :")
@@ -462,10 +476,11 @@ with tab_radar:
                     <h3>⚡ {paire} : {info['signal']} ({info['motif']})</h3>
                     <span class="timer-badge">⏱️ Valide : {minutes_rest}m {secondes_rest:02d}s</span>
                 </div>
-                🎯 <span class="opt-price">ORDRE LIMIT CONSEILLÉ : {formater_prix(info['prix_entree'])} USDT</span><br>
-                🛑 <b>Stop-Loss :</b> {formater_prix(info['sl'])} USDT<br>
-                💰 <b>Take-Profit Cible :</b> {formater_prix(info['tp'])} USDT<br>
-                <small>💡 <i>Trade en cours ? Laissez le Stop-Loss et Take-Profit agir sur MEXC sans couper prématurément.</i></small>
+                🎯 <span class="opt-price">ENTRÉE OPTIMALE (Ordre Limit) : {formater_prix(info['prix_entree'])} USDT</span><br>
+                🛑 <b>Stop-Loss Obligatoire :</b> {formater_prix(info['sl'])} USDT<br>
+                💰 <b>TP1 (Sécuriser 50% + Breakeven) :</b> {formater_prix(info['tp1'])} USDT<br>
+                🚀 <span class="tp-runner">TP2 RUNNER (Gros Coup 1:3.8) : {formater_prix(info['tp2'])} USDT</span><br>
+                <small>💡 <i>Méthode Pro : Clôturez 50% au TP1 et remontez votre Stop à Breakeven pour laisser courir le TP2 sans risque !</i></small>
             </div>
             """,
                 unsafe_allow_html=True,
@@ -493,9 +508,11 @@ with tab_radar:
     st.subheader(f"📊 Surveillance des 7 Paires en direct ({unite_temps})")
     st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
-# 2. CALCULATEUR SYNCHRONISÉ AVEC LE LEVIER
+# 2. CALCULATEUR AVEC TP ÉCHELONNÉ
 with tab_calc:
-    st.subheader(f"🧮 Calculateur de Risque (Calibré pour {profil})")
+    st.subheader(
+        f"🧮 Calculateur de Payouts (Levier x{levier_suggere} | 100 USDT)"
+    )
 
     col_p, col_s = st.columns(2)
     liste_options = [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
@@ -536,17 +553,17 @@ with tab_calc:
         distance_liq_dollars = abs(p_liq - p_entree)
 
         tp1 = (
-            p_entree + (2.0 * distance)
+            p_entree + (1.8 * distance)
             if is_long
-            else p_entree - (2.0 * distance)
+            else p_entree - (1.8 * distance)
         )
         tp2 = (
-            p_entree + (2.5 * distance)
+            p_entree + (3.8 * distance)
             if is_long
-            else p_entree - (2.5 * distance)
+            else p_entree - (3.8 * distance)
         )
-        gain_tp1 = (2.0 * distance / p_entree) * notionnel
-        gain_tp2 = (2.5 * distance / p_entree) * notionnel
+        gain_tp1 = (1.8 * distance / p_entree) * notionnel
+        gain_tp2 = (3.8 * distance / p_entree) * notionnel
 
         securite_validee = (p_sl > p_liq) if is_long else (p_sl < p_liq)
 
@@ -554,20 +571,19 @@ with tab_calc:
         st.markdown(
             f"""
         <div class="metric-card">
-            <h3>📋 Ordre MEXC Recommandé (x{levier_choisi}) :</h3>
-            <b>💵 Marge Engagée :</b> <span style="font-size:22px; color:#00E676;"><b>{marge_fixe:.2f} USDT</b></span><br>
-            <b>🚀 Notionnel Contrôlé :</b> <b>{notionnel:,.2f} USDT</b> ({quantite:.4f} {paire.split('/')[0]})<br>
-            <b>🛑 Perte au Stop-Loss :</b> <span style="color:#FF5252;"><b>-{perte_sl:.2f} USDT</b> ({pct_dist:.2%})</span><br>
-            <b>🎯 Gain au TP 1:2 :</b> <span style="color:#00E676;"><b>+{gain_tp1:.2f} USDT</b></span> ({formater_prix(tp1)} USDT)<br>
-            <b>🎯 Gain au TP 1:2.5 :</b> <span style="color:#00E676;"><b>+{gain_tp2:.2f} USDT</b></span> ({formater_prix(tp2)} USDT)<br>
-            <b>💀 PRIX DE LIQUIDATION :</b> <b>{formater_prix(p_liq)} USDT</b> (Distance : {formater_prix(distance_liq_dollars)} USDT)
+            <h3>📋 Vos Payouts Estimés sur MEXC (x{levier_choisi}) :</h3>
+            <b>💵 Marge Engagée :</b> <b>{marge_fixe:.2f} USDT</b> (Position totale : {notionnel:,.2f} USDT)<br>
+            <b>🛑 Perte si Stop touché :</b> <span style="color:#FF5252;"><b>-{perte_sl:.2f} USDT</b> ({pct_dist:.2%})</span><br>
+            <b>🎯 TP1 (Sécurisation 50%) :</b> <span style="color:#00E676;"><b>+{gain_tp1:.2f} USDT</b></span> ({formater_prix(tp1)} USDT)<br>
+            <b>🚀 TP2 RUNNER (Gros Coup 1:3.8) :</b> <span style="font-size:20px; color:#00E676;"><b>+{gain_tp2:.2f} USDT</b></span> ({formater_prix(tp2)} USDT)<br>
+            <b>💀 PRIX DE LIQUIDATION :</b> <b>{formater_prix(p_liq)} USDT</b> (Marge de sécurité : {formater_prix(distance_liq_dollars)} USDT)
         </div>
         """,
             unsafe_allow_html=True,
         )
 
         if securite_validee and (pct_dist < dist_liq_pct * 0.7):
-            st.success("✅ SÉCURITÉ VALIDÉE : Stop-Loss placé avant la liquidation.")
+            st.success("✅ SÉCURITÉ VALIDÉE : Stop-Loss bien placé.")
         else:
             st.markdown(
                 f"""
