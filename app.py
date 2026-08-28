@@ -21,7 +21,7 @@ except ImportError:
 
 # Configuration Streamlit Mobile & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Multi-Traders & IA Collective",
+    page_title="Cockpit Trader Multi-Profils",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -33,6 +33,7 @@ st.markdown(
     .stApp { background-color: #080A0E; color: #FAFAFA; }
     .metric-card { background-color: #12161F; border-radius: 8px; padding: 12px; border-left: 4px solid #2962FF; margin-bottom: 8px; }
     .xp-card { background-color: #1A1528; border-radius: 8px; padding: 14px; border: 1px solid #9C27B0; margin-bottom: 12px; }
+    .cooldown-badge { background-color: #332005; color: #FFB300; padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: bold; border: 1px solid #FFB300; }
     .user-badge { background-color: #0D2818; color: #00E676; padding: 5px 12px; border-radius: 6px; font-weight: bold; border: 1px solid #00E676; }
     
     .mini-card-conservateur { background-color: #0E1626; border-radius: 8px; padding: 10px; border-top: 4px solid #2979FF; margin-bottom: 8px; min-height: 110px; }
@@ -46,11 +47,13 @@ st.markdown(
     .opt-price { color: #FFD700; font-size: 18px; font-weight: bold; }
     .tp-runner { color: #00E676; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #1F2430; color: #00E676; padding: 3px 8px; border-radius: 5px; font-size: 13px; font-weight: bold; }
+    .danger-liq { background-color: #4A0000; border-radius: 8px; padding: 10px; border: 1px solid #FF1744; color: #FFF; font-weight: bold; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
+FICHIER_JOURNAL = "journal_trading.csv"
 FICHIER_COMPTES = "comptes_traders.json"
 FICHIER_IA = "experience_ia_collective.json"
 
@@ -77,7 +80,6 @@ def charger_tous_les_comptes():
                 return json.load(f)
         except Exception:
             pass
-    # Compte par défaut
     return {
         "Thomas": {
             "solde": 1000.0,
@@ -149,9 +151,7 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
             ia["pertes_consecutives"].get(motif_famille, 0) + 1
         )
         if ia["pertes_consecutives"][motif_famille] >= 2:
-            ia["cooldowns"][motif_famille] = (
-                time.time() + 720
-            )  # Cooldown collectif de 12 min
+            ia["cooldowns"][motif_famille] = time.time() + 720
             lecon = f"🛡️ [Alerte Collectif] 2 pertes consécutives sur {motif_famille} : Cooldown 12 min activé pour tout le monde !"
         else:
             lecon = f"❌ [{nom_trader} - {datetime.datetime.now().strftime('%H:%M')}] Perte sur {paire} ({motif_famille}) : {pnl:.2f} USDT."
@@ -177,6 +177,25 @@ def formater_prix(p):
         return f"{p:.3f}"
     else:
         return f"{p:.2f}"
+
+
+if not os.path.exists(FICHIER_JOURNAL):
+    with open(FICHIER_JOURNAL, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "Date",
+                "Paire",
+                "Sens",
+                "Prix Entree",
+                "Stop Loss",
+                "Take Profit",
+                "Marge (USDT)",
+                "Levier",
+                "Resultat",
+                "PnL (USDT)",
+            ]
+        )
 
 
 @st.cache_data(ttl=30)
@@ -404,6 +423,7 @@ def analyser_marche_harmonise(profil_court):
                     "TP2": tp2,
                     "RSI": f"{rsi:.1f}",
                     "Intervalle": intervalle,
+                    "En_Cooldown": en_cooldown,
                 }
             )
         except Exception:
@@ -412,14 +432,40 @@ def analyser_marche_harmonise(profil_court):
 
 
 # ==========================================================
-# 👤 GESTIONNAIRE DE PROFILS TRADERS (BARRE LATÉRALE)
+# 👤 GESTIONNAIRE DE PROFILS TRADERS VÉRITABLEMENT VERROUILLÉ
 # ==========================================================
 comptes_tous = charger_tous_les_comptes()
 liste_noms = list(comptes_tous.keys()) + ["➕ Nouveau Profil Trader"]
 
+if (
+    "active_trader" not in st.session_state
+    or st.session_state.active_user not in list(comptes_tous.keys())
+):
+    st.session_state.active_user = (
+        "Thomas" if "Thomas" in comptes_tous else list(comptes_tous.keys())[0]
+    )
+
+
+def change_user_cb():
+    val = st.session_state.temp_user_select
+    if val != "➕ Nouveau Profil Trader":
+        st.session_state.active_user = val
+
+
+keys_dispos = list(comptes_tous.keys())
+idx_safe = (
+    keys_dispos.index(st.session_state.active_user)
+    if st.session_state.active_user in keys_dispos
+    else 0
+)
+
 st.sidebar.markdown("### 👤 Espace Utilisateur")
 choix_utilisateur = st.sidebar.selectbox(
-    "Connecté en tant que :", liste_noms, index=0
+    "Connecté en tant que :",
+    liste_noms,
+    index=idx_safe if idx_safe < len(liste_noms) - 1 else 0,
+    key="temp_user_select",
+    on_change=change_user_cb,
 )
 
 if choix_utilisateur == "➕ Nouveau Profil Trader":
@@ -434,13 +480,17 @@ if choix_utilisateur == "➕ Nouveau Profil Trader":
                 "historique": [],
             }
             sauvegarder_tous_les_comptes(comptes_tous)
+            st.session_state.active_user = nouveau_pseudo
             st.sidebar.success(f"Compte créé pour {nouveau_pseudo} !")
             st.rerun()
-    trader_courant = "Thomas"
+    trader_courant = st.session_state.active_user
 else:
-    trader_courant = choix_utilisateur
+    trader_courant = (
+        st.session_state.active_user
+        if st.session_state.active_user in comptes_tous
+        else choix_utilisateur
+    )
 
-# Récupération du compte actif
 compte_actif = comptes_tous.get(
     trader_courant,
     {
@@ -453,699 +503,5 @@ compte_actif = comptes_tous.get(
 )
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE DE RISQUE
-# ==========================================================
-col_h1, col_h2 = st.columns([3, 1])
-with col_h1:
-    st.title("🎛️ Cockpit Multi-Traders & IA Collective")
-with col_h2:
-    st.markdown(
-        f'<div style="text-align:right; padding-top:15px;"><span class="user-badge">👤 {trader_courant}</span></div>',
-        unsafe_allow_html=True,
-    )
-
-profil = st.select_slider(
-    "👉 Réglez votre style de trading :",
-    options=[
-        "🛡️ Conservateur (15m x20)",
-        "⚖️ Intraday (5m x50)",
-        "⚡ Scalping (1m x100)",
-        "🔥 Ultra-Scalp (1m x150)",
-    ],
-    value="🔥 Ultra-Scalp (1m x150)",
-)
-
-if "Conservateur" in profil:
-    profil_cle, levier_suggere, duree_memoire, unite_temps = (
-        "Conservateur",
-        20,
-        600,
-        "15m",
-    )
-elif "Intraday" in profil:
-    profil_cle, levier_suggere, duree_memoire, unite_temps = (
-        "Intraday",
-        50,
-        300,
-        "5m",
-    )
-elif "Scalping" in profil:
-    profil_cle, levier_suggere, duree_memoire, unite_temps = (
-        "Scalping 1m",
-        100,
-        180,
-        "1m",
-    )
-else:
-    profil_cle, levier_suggere, duree_memoire, unite_temps = (
-        "Ultra-Scalp",
-        150,
-        120,
-        "1m",
-    )
-
-col_ref, col_time = st.columns([1, 1])
-with col_ref:
-    activer_auto = st.toggle("🔄 Auto-Refresh Live", value=True)
-    if activer_auto:
-        sec = 5 if "1m" in unite_temps else 10
-        if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_collective_hive")
-with col_time:
-    maintenant_ts = time.time()
-    st.caption(
-        f"🕒 Heure : **{datetime.datetime.now().strftime('%H:%M:%S')}** | Profil : **{profil_cle} ({unite_temps} x{levier_suggere})**"
-    )
-
-# ==========================================================
-# 🧠 SYNCHRONISATION MULTI-PROFILS
-# ==========================================================
-durees_profils = {
-    "Conservateur": 600,
-    "Intraday": 300,
-    "Scalping 1m": 180,
-    "Ultra-Scalp": 120,
-}
-leviers_profils = {
-    "Conservateur": 20,
-    "Intraday": 50,
-    "Scalping 1m": 100,
-    "Ultra-Scalp": 150,
-}
-
-donnees_tous_profils = {}
-
-for p_nom in LISTE_PROFILS:
-    donnees_p = analyser_marche_harmonise(p_nom)
-    donnees_tous_profils[p_nom] = donnees_p
-
-    for d in donnees_p:
-        paire = d["Paire"]
-        if d["Signal_Detecte"] is not None:
-            st.session_state.memoire_par_profil.setdefault(p_nom, {})[
-                paire
-            ] = {
-                "signal": d["Signal_Detecte"],
-                "motif": d["Motif"],
-                "prix_entree": d["Opt_Price"],
-                "sl": d["SL"],
-                "tp1": d["TP1"],
-                "tp2": d["TP2"],
-                "timestamp": maintenant_ts,
-            }
-
-    exp = durees_profils.get(p_nom, 120)
-    mem_p = st.session_state.memoire_par_profil.get(p_nom, {})
-    a_suppr = [
-        p for p, info in mem_p.items() if maintenant_ts - info["timestamp"] > exp
-    ]
-    for p in a_suppr:
-        if p in mem_p:
-            del mem_p[p]
-
-# ==========================================================
-# 🤖 AUTO-TRADING POUR LE COMPTE ACTIF
-# ==========================================================
-if compte_actif.get("auto_actif", False):
-    for p_nom in LISTE_PROFILS:
-        levier_strat = leviers_profils[p_nom]
-        for d in donnees_tous_profils.get(p_nom, []):
-            paire = d["Paire"]
-            cle_pos = f"{p_nom}_{paire}"
-            high = d["High"]
-            low = d["Low"]
-            motif_fam = d["Motif_Famille"]
-
-            if cle_pos in compte_actif["positions"]:
-                pos = compte_actif["positions"][cle_pos]
-                sens = pos["sens"]
-                p_entree = pos["entree"]
-                sl = pos["sl"]
-                tp1 = pos["tp1"]
-                tp2 = pos["tp2"]
-                notionnel = pos["marge"] * pos["levier"]
-
-                if "SHORT" in sens:
-                    if not pos["tp1_hit"] and low <= tp1:
-                        pos["tp1_hit"] = True
-                        pnl_50 = (
-                            (p_entree - tp1) / p_entree
-                        ) * (notionnel * 0.5)
-                        compte_actif["solde"] += pnl_50
-                        pos["sl"] = p_entree
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif pos["tp1_hit"] and low <= tp2:
-                        pnl_runner = (
-                            (p_entree - tp2) / p_entree
-                        ) * (notionnel * 0.5)
-                        pnl_tot = (
-                            (p_entree - tp1) / p_entree
-                        ) * (notionnel * 0.5) + pnl_runner
-                        compte_actif["solde"] += pnl_runner
-                        mettre_a_jour_ia_collective(
-                            trader_courant, paire, motif_fam, True, pnl_tot
-                        )
-                        compte_actif["historique"].insert(
-                            0,
-                            {
-                                "strategie": p_nom,
-                                "paire": paire,
-                                "sens": sens,
-                                "pnl": round(pnl_tot, 2),
-                                "win": True,
-                                "date": datetime.datetime.now().strftime(
-                                    "%H:%M:%S"
-                                ),
-                            },
-                        )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif high >= sl:
-                        if pos["tp1_hit"]:
-                            pnl_tot = (
-                                (p_entree - tp1) / p_entree
-                            ) * (notionnel * 0.5)
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, True, pnl_tot
-                            )
-                            compte_actif["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl_tot, 2),
-                                    "win": True,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                },
-                            )
-                        else:
-                            pnl = (
-                                (p_entree - sl) / p_entree
-                            ) * notionnel
-                            compte_actif["solde"] += pnl
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, False, pnl
-                            )
-                            compte_actif["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl, 2),
-                                    "win": False,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                },
-                            )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                elif "LONG" in sens:
-                    if not pos["tp1_hit"] and high >= tp1:
-                        pos["tp1_hit"] = True
-                        pnl_50 = (
-                            (tp1 - p_entree) / p_entree
-                        ) * (notionnel * 0.5)
-                        compte_actif["solde"] += pnl_50
-                        pos["sl"] = p_entree
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif pos["tp1_hit"] and high >= tp2:
-                        pnl_runner = (
-                            (tp2 - p_entree) / p_entree
-                        ) * (notionnel * 0.5)
-                        pnl_tot = (
-                            (tp1 - p_entree) / p_entree
-                        ) * (notionnel * 0.5) + pnl_runner
-                        compte_actif["solde"] += pnl_runner
-                        mettre_a_jour_ia_collective(
-                            trader_courant, paire, motif_fam, True, pnl_tot
-                        )
-                        compte_actif["historique"].insert(
-                            0,
-                            {
-                                "strategie": p_nom,
-                                "paire": paire,
-                                "sens": sens,
-                                "pnl": round(pnl_tot, 2),
-                                "win": True,
-                                "date": datetime.datetime.now().strftime(
-                                    "%H:%M:%S"
-                                ),
-                            },
-                        )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif low <= sl:
-                        if pos["tp1_hit"]:
-                            pnl_tot = (
-                                (tp1 - p_entree) / p_entree
-                            ) * (notionnel * 0.5)
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, True, pnl_tot
-                            )
-                            compte_actif["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl_tot, 2),
-                                    "win": True,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                },
-                            )
-                        else:
-                            pnl = ((sl - p_entree) / p_entree) * notionnel
-                            compte_actif["solde"] += pnl
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, False, pnl
-                            )
-                            compte_actif["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl, 2),
-                                    "win": False,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                },
-                            )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-            elif len(compte_actif["positions"]) < 4 and d["Signal_Detecte"]:
-                compte_actif["positions"][cle_pos] = {
-                    "strategie": p_nom,
-                    "sens": d["Signal_Detecte"],
-                    "motif": d["Motif"],
-                    "entree": d["Opt_Price"],
-                    "sl": d["SL"],
-                    "tp1": d["TP1"],
-                    "tp2": d["TP2"],
-                    "marge": 100.0,
-                    "levier": levier_strat,
-                    "tp1_hit": False,
-                    "date_open": datetime.datetime.now().strftime("%H:%M:%S"),
-                }
-                sauvegarder_tous_les_comptes(comptes_tous)
-
-# ==========================================================
-# 👀 VUE PANORAMIQUE DES 4 STYLES
-# ==========================================================
-st.markdown("### 👀 Vue Panoramique (Opportunités sur les 4 Styles) :")
-
-col_c, col_i, col_s, col_u = st.columns(4)
-with col_c:
-    st.markdown(
-        """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><hr style="margin:4px 0;">""",
-        unsafe_allow_html=True,
-    )
-    sigs_c = st.session_state.memoire_par_profil.get("Conservateur", {})
-    if sigs_c:
-        for p, info in sigs_c.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col_i:
-    st.markdown(
-        """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><hr style="margin:4px 0;">""",
-        unsafe_allow_html=True,
-    )
-    sigs_i = st.session_state.memoire_par_profil.get("Intraday", {})
-    if sigs_i:
-        for p, info in sigs_i.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col_s:
-    st.markdown(
-        """<div class="mini-card-scalping"><b>⚡ Scalping (1m x100)</b><hr style="margin:4px 0;">""",
-        unsafe_allow_html=True,
-    )
-    sigs_s = st.session_state.memoire_par_profil.get("Scalping 1m", {})
-    if sigs_s:
-        for p, info in sigs_s.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col_u:
-    st.markdown(
-        """<div class="mini-card-ultrascalp"><b>🔥 Ultra-Scalp (1m x150)</b><hr style="margin:4px 0;">""",
-        unsafe_allow_html=True,
-    )
-    sigs_u = st.session_state.memoire_par_profil.get("Ultra-Scalp", {})
-    if sigs_u:
-        for p, info in sigs_u.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ==========================================================
-# 📱 ONGLETS PRINCIPAUX
-# ==========================================================
-tab_auto, tab_radar, tab_ia, tab_classement, tab_calc, tab_marche = st.tabs(
-    [
-        f"🤖 Mon Auto-Trader ({trader_courant})",
-        f"⚡ Radar ({profil_cle})",
-        "🧠 Cerveau Collectif IA",
-        "🏆 Classement Amis",
-        f"🧮 Calculateur (x{levier_suggere})",
-        "🌍 Marché & News",
-    ]
-)
-
-# 1. MON AUTO-TRADER
-with tab_auto:
-    col_t1, col_t2 = st.columns([2, 1])
-    pnl_auto = compte_actif["solde"] - compte_actif["capital_initial"]
-
-    with col_t1:
-        st.subheader(f"💼 Portefeuille Virtuel de {trader_courant}")
-        st.markdown(
-            f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT`  |  **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT ({pnl_auto/10:+.2f}%)</span>",
-            unsafe_allow_html=True,
-        )
-
-    with col_t2:
-        nouvel_etat = st.toggle(
-            "⚡ ACTIVER MON AUTO-TRADING",
-            value=compte_actif.get("auto_actif", False),
-        )
-        if nouvel_etat != compte_actif.get("auto_actif", False):
-            compte_actif["auto_actif"] = nouvel_etat
-            sauvegarder_tous_les_comptes(comptes_tous)
-            st.rerun()
-
-    if compte_actif.get("auto_actif", False):
-        st.success(
-            f"🟢 **Auto-Trader de {trader_courant} EN LIGNE** : Vos 4 stratégies tournent en continu !"
-        )
-    else:
-        st.info("⚪ **Auto-Trader en Pause** pour ce profil.")
-
-    st.markdown(f"#### 🚀 Positions Ouvertes pour {trader_courant} :")
-    if compte_actif["positions"]:
-        for cle, pos in list(compte_actif["positions"].items()):
-            st.markdown(
-                f"""
-            <div class="pos-card">
-                <b>[{pos['strategie']}] {cle.split('_')[1]} ({pos['sens']} x{pos['levier']})</b> | Ouvert à {pos.get('date_open', '')}<br>
-                🎯 <b>Entrée :</b> {formater_prix(pos['entree'])} USDT | 🛑 <b>Stop :</b> {formater_prix(pos['sl'])} USDT<br>
-                💰 <b>TP1 (50%) :</b> {formater_prix(pos['tp1'])} USDT [{'✅ Breakeven Actif' if pos['tp1_hit'] else '⏳ En attente'}]<br>
-                🚀 <b>TP2 Runner :</b> {formater_prix(pos['tp2'])} USDT
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-    else:
-        st.caption("👀 Aucune position ouverte.")
-
-    st.markdown("#### 📜 Mon Historique Personnel de Trades :")
-    if compte_actif["historique"]:
-        df_hist = pd.DataFrame(compte_actif["historique"])
-        st.dataframe(df_hist, hide_index=True)
-    else:
-        st.caption("Aucun trade clôturé pour le moment.")
-
-    st.markdown("---")
-    if st.button(f"🔄 Réinitialiser le compte de {trader_courant} à 1000 USDT"):
-        compte_actif["solde"] = 1000.0
-        compte_actif["capital_initial"] = 1000.0
-        compte_actif["auto_actif"] = False
-        compte_actif["positions"] = {}
-        compte_actif["historique"] = []
-        sauvegarder_tous_les_comptes(comptes_tous)
-        st.success(f"Compte de {trader_courant} réinitialisé !")
-        st.rerun()
-
-# 2. RADAR
-with tab_radar:
-    memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
-    if memoire_active:
-        st.subheader(f"🎯 Opportunités ({profil_cle}) :")
-        for p, info in list(memoire_active.items()):
-            temps_restant = int(
-                durees_profils.get(profil_cle, 120)
-                - (maintenant_ts - info["timestamp"])
-            )
-            minutes_rest = max(0, temps_restant // 60)
-            secondes_rest = max(0, temps_restant % 60)
-
-            classe = (
-                "alert-card-long"
-                if "LONG" in info["signal"]
-                else "alert-card-short"
-            )
-            st.markdown(
-                f"""
-            <div class="{classe}">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3>⚡ {p} : {info['signal']} ({info['motif']})</h3>
-                    <span class="timer-badge">⏱️ Valide : {minutes_rest}m {secondes_rest:02d}s</span>
-                </div>
-                🎯 <span class="opt-price">ENTRÉE OPTIMALE : {formater_prix(info['prix_entree'])} USDT</span><br>
-                🛑 <b>Stop-Loss :</b> {formater_prix(info['sl'])} USDT<br>
-                💰 <b>TP1 (50% + Breakeven) :</b> {formater_prix(info['tp1'])} USDT<br>
-                🚀 <span class="tp-runner">TP2 RUNNER : {formater_prix(info['tp2'])} USDT</span>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-        st.markdown("---")
-
-    donnees_affichees = donnees_tous_profils.get(profil_cle, [])
-    lignes_tableau = []
-    for d in donnees_affichees:
-        paire = d["Paire"]
-        statut = (
-            memoire_active[paire]["signal"]
-            if paire in memoire_active
-            else "VEILLE ⚪"
-        )
-        lignes_tableau.append(
-            {
-                "Paire": paire,
-                "Prix Actuel": formater_prix(d["Prix"]),
-                "Statut": statut,
-                "RSI": d["RSI"],
-                "Unité": d["Intervalle"],
-            }
-        )
-
-    st.subheader(f"📊 Surveillance des 7 Paires en direct ({unite_temps})")
-    st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
-
-# 3. CERVEAU COLLECTIF IA
-with tab_ia:
-    st.subheader("🧠 Cerveau Collectif Unique (Alimenté par tous les traders)")
-    ia_stats = charger_experience_ia_collective()
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(
-            f"""
-        <div class="xp-card">
-            <h4>🏆 Niveau Collectif : <span style="color:#00E676;">{ia_stats['niveau']}</span></h4>
-            <h2>⭐ {ia_stats['xp_total']} XP Partagés</h2>
-            <small>Chaque trade gagné par n'importe quel ami fait progresser cette IA !</small>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    with c2:
-        st.markdown("#### 📊 Confiance Collective par Paire :")
-        df_confiance = pd.DataFrame(
-            [
-                {
-                    "Paire": k,
-                    "Score Confiance": f"{v:.2f}x",
-                    "Statut": (
-                        "🟢 Boosté"
-                        if v > 1.05
-                        else ("🔴 Attention" if v < 0.80 else "⚪ Neutre")
-                    ),
-                }
-                for k, v in ia_stats["scores_paires"].items()
-            ]
-        )
-        st.dataframe(df_confiance, hide_index=True)
-
-    st.markdown("#### 📝 Dernières Leçons Apprises par la Ruche IA :")
-    for lecon in ia_stats["lecons_apprises"]:
-        st.markdown(f"• {lecon}")
-
-# 4. CLASSEMENT DES AMIS
-with tab_classement:
-    st.subheader("🏆 Classement en Direct des Traders")
-    liste_classement = []
-    for nom, c in comptes_tous.items():
-        pnl = c["solde"] - c["capital_initial"]
-        trades_nb = len(c["historique"])
-        wins = sum(1 for t in c["historique"] if t.get("win", False))
-        wr = (wins / trades_nb * 100) if trades_nb > 0 else 0.0
-        liste_classement.append(
-            {
-                "Trader": f"👤 {nom}",
-                "Solde (USDT)": f"{c['solde']:.2f} $",
-                "PnL Net": f"{pnl:+.2f} $",
-                "Performance": f"{pnl/10:+.2f} %",
-                "Winrate": f"{wr:.1f} %",
-                "Trades": trades_nb,
-            }
-        )
-
-    df_rank = pd.DataFrame(liste_classement).sort_values(
-        by="PnL Net", ascending=False
-    )
-    st.dataframe(df_rank, hide_index=True)
-
-# 5. CALCULATEUR
-with tab_calc:
-    st.subheader(f"🧮 Calculateur de Risque ({profil})")
-    col_p, col_s = st.columns(2)
-    liste_options = [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
-    paire_sel = col_p.selectbox("Contrat Futures", liste_options)
-    sens_sel = col_s.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
-    is_long = "LONG" in sens_sel
-
-    col_e, col_sl = st.columns(2)
-    p_entree = col_e.number_input(
-        "🎯 Prix d'Entrée (USDT)", value=106.20, step=0.01, format="%.5f"
-    )
-    p_sl = col_sl.number_input(
-        "🛑 Stop-Loss (USDT)", value=105.90, step=0.01, format="%.5f"
-    )
-
-    col_m, col_lev = st.columns(2)
-    marge_fixe = col_m.number_input(
-        "Marge engagée (USDT)", value=100.0, step=10.0
-    )
-    levier_choisi = col_lev.slider(
-        "Levier", min_value=1, max_value=200, value=levier_suggere
-    )
-
-    if (is_long and p_sl < p_entree) or ((not is_long) and p_sl > p_entree):
-        distance = abs(p_entree - p_sl)
-        pct_dist = distance / p_entree
-        notionnel = marge_fixe * levier_choisi
-        quantite = notionnel / p_entree
-        perte_sl = pct_dist * notionnel
-
-        dist_liq_pct = (1.0 / levier_choisi) * 0.90
-        p_liq = (
-            p_entree * (1 - dist_liq_pct)
-            if is_long
-            else p_entree * (1 + dist_liq_pct)
-        )
-        distance_liq_dollars = abs(p_liq - p_entree)
-
-        tp1 = (
-            p_entree + (1.8 * distance)
-            if is_long
-            else p_entree - (1.8 * distance)
-        )
-        tp2 = (
-            p_entree + (3.8 * distance)
-            if is_long
-            else p_entree - (3.8 * distance)
-        )
-        gain_tp1 = (1.8 * distance / p_entree) * notionnel
-        gain_tp2 = (3.8 * distance / p_entree) * notionnel
-        securite_validee = (p_sl > p_liq) if is_long else (p_sl < p_liq)
-
-        st.markdown("---")
-        st.markdown(
-            f"""
-        <div class="metric-card">
-            <h3>📋 Ordre Recommandé (x{levier_choisi}) :</h3>
-            <b>💵 Marge Engagée :</b> <b>{marge_fixe:.2f} USDT</b> (Notionnel : {notionnel:,.2f} USDT)<br>
-            <b>🛑 Perte au Stop-Loss :</b> <span style="color:#FF5252;"><b>-{perte_sl:.2f} USDT</b> ({pct_dist:.2%})</span><br>
-            <b>🎯 Gain TP1 (50%) :</b> <span style="color:#00E676;"><b>+{gain_tp1:.2f} USDT</b></span> ({formater_prix(tp1)} USDT)<br>
-            <b>🚀 Gain TP2 RUNNER :</b> <span style="font-size:20px; color:#00E676;"><b>+{gain_tp2:.2f} USDT</b></span> ({formater_prix(tp2)} USDT)<br>
-            <b>💀 PRIX DE LIQUIDATION :</b> <b>{formater_prix(p_liq)} USDT</b> (Distance : {formater_prix(distance_liq_dollars)} USDT)
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-# 6. MARCHÉ
-with tab_marche:
-    fg_score, fg_sentiment = charger_fear_and_greed()
-    score_ia, news = charger_news_ia()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(
-            f"""
-        <div class="metric-card">
-            <h4>📊 Fear & Greed Index</h4>
-            <h2>{fg_score} / 100</h2>
-            <b>Sentiment :</b> {fg_sentiment}
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    with col2:
-        st.markdown(
-            f"""
-        <div class="metric-card">
-            <h4>🧠 Sentiment IA des News</h4>
-            <h2>{score_ia} / 10</h2>
-            <b>Tendance :</b> {"RISK-ON 🐂" if score_ia >= 6 else ("RISK-OFF 🐻" if score_ia <= 4 else "NEUTRE ⚪")}
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    st.subheader("📰 Dernières dépêches mondiales")
-    for tag, titre in news:
-        st.markdown(f"**{tag}** — {titre}")
+# 🎛️ LE CURSEUR MAÎTRE
+# =================================
