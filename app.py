@@ -20,7 +20,7 @@ except ImportError:
 
 # Configuration Streamlit Mobile & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Trader Multi-Profils",
+    page_title="Cockpit Futures USDT Pro",
     page_icon="🎛️",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -128,7 +128,7 @@ def charger_news_ia():
         return 5, []
 
 
-# Moteur Différencié selon le Profil
+# Moteur Différencié selon les 4 nouveaux leviers
 @st.cache_data(ttl=10)
 def analyser_marche_profil_reel(profil_nom):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
@@ -139,25 +139,25 @@ def analyser_marche_profil_reel(profil_nom):
     if "Conservateur" in profil_nom:
         intervalle = "15m"
         periode = "5d"
-        lookback = 30  # ~7h30 de structure
+        lookback = 30  # Structure 15m
         mult_sl = 0.50
         mult_tp = 3.0
-    elif "Équilibré" in profil_nom:
+    elif "Intraday" in profil_nom:
         intervalle = "5m"
         periode = "2d"
-        lookback = 20  # ~1h40 de structure
+        lookback = 20  # Structure Killzone
         mult_sl = 0.40
         mult_tp = 2.5
-    elif "Agressif" in profil_nom:
+    elif "Scalping" in profil_nom:
         intervalle = "5m"
         periode = "2d"
-        lookback = 10  # ~50 min de structure
+        lookback = 10  # Scalping dynamique
         mult_sl = 0.30
         mult_tp = 2.0
-    else:  # Ultra-Scalper
+    else:  # Ultra-Scalp
         intervalle = "1m"
         periode = "1d"
-        lookback = 8  # 8 minutes
+        lookback = 8  # 1-minute pur
         mult_sl = 0.25
         mult_tp = 2.0
 
@@ -189,7 +189,6 @@ def analyser_marche_profil_reel(profil_nom):
             high_s = float(df["High"].iloc[-lookback:-1].max())
             low_s = float(df["Low"].iloc[-lookback:-1].min())
 
-            # Moyennes mobiles
             df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
             ema_50 = float(df["EMA_50"].iloc[-1])
 
@@ -198,7 +197,6 @@ def analyser_marche_profil_reel(profil_nom):
             ema_9 = float(df["EMA_9"].iloc[-1])
             ema_21 = float(df["EMA_21"].iloc[-1])
 
-            # RSI
             d = df["Close"].diff()
             g = d.where(d > 0, 0).rolling(7 if "Ultra" in profil_nom else 14).mean()
             l = (
@@ -208,7 +206,6 @@ def analyser_marche_profil_reel(profil_nom):
             )
             rsi = float((100 - (100 / (1 + (g / l)))).iloc[-1])
 
-            # ATR
             hl = df["High"] - df["Low"]
             hc = (df["High"] - df["Close"].shift()).abs()
             lc = (df["Low"] - df["Close"].shift()).abs()
@@ -220,7 +217,6 @@ def analyser_marche_profil_reel(profil_nom):
                 .iloc[-1]
             )
 
-            # Sweeps & FVG
             sweep_h = any(
                 df["High"].iloc[-i] > high_s and df["Close"].iloc[-i] < high_s
                 for i in range(1, 3)
@@ -241,11 +237,7 @@ def analyser_marche_profil_reel(profil_nom):
             opt_p, sl, tp = None, None, None
             motif = ""
 
-            # ==========================================================
-            # 🎯 LOGIQUE DIFFÉRENCIÉE SELON LE PROFIL
-            # ==========================================================
-
-            # 🛡️ 1. MODE CONSERVATEUR (15m, Tendance EMA 50 + Sweeps 8h Majeurs)
+            # 🛡️ 1. CONSERVATEUR (15m x20) : Tendance EMA 50 + Sweeps 15m
             if "Conservateur" in profil_nom:
                 if prix < ema_50 and sweep_h and rsi >= 65 and (prix < open_p):
                     signal = "🔴 SHORT"
@@ -267,12 +259,12 @@ def analyser_marche_profil_reel(profil_nom):
                     sl = opt_p - dist_sl
                     tp = opt_p + (mult_tp * dist_sl)
 
-            # ⚖️ 2. MODE ÉQUILIBRÉ (5m Killzones Londres/NY uniquement)
-            elif "Équilibré" in profil_nom:
+            # ⚖️ 2. INTRADAY (5m x50) : Killzones Londres/NY
+            elif "Intraday" in profil_nom:
                 if en_killzone:
                     if (sweep_h or fvg_bear) and (prix < open_p) and rsi >= 60:
                         signal = "🔴 SHORT"
-                        motif = "Killzone Session (Sweep/FVG 5m)"
+                        motif = "Killzone Session (5m)"
                         opt_p = high_s if sweep_h else prix
                         dist_sl = max(high - opt_p + (0.05 * atr), mult_sl * atr)
                         sl = opt_p + dist_sl
@@ -283,14 +275,14 @@ def analyser_marche_profil_reel(profil_nom):
                         and rsi <= 40
                     ):
                         signal = "🟢 LONG"
-                        motif = "Killzone Session (Sweep/FVG 5m)"
+                        motif = "Killzone Session (5m)"
                         opt_p = low_s if sweep_l else prix
                         dist_sl = max(opt_p - low + (0.05 * atr), mult_sl * atr)
                         sl = opt_p - dist_sl
                         tp = opt_p + (mult_tp * dist_sl)
 
-            # ⚡ 3. MODE AGRESSIF (5m Scalp Dynamique - Momentum & Rebond)
-            elif "Agressif" in profil_nom:
+            # ⚡ 3. SCALPING (5m x100) : Momentum & FVG Rapide
+            elif "Scalping" in profil_nom:
                 if (sweep_h or fvg_bear or (ema_9 < ema_21 and rsi >= 62)) and (
                     prix < open_p
                 ):
@@ -310,7 +302,7 @@ def analyser_marche_profil_reel(profil_nom):
                     sl = prix - dist_sl
                     tp = prix + (mult_tp * dist_sl)
 
-            # 🔥 4. MODE ULTRA-SCALPER (1m Micro-Pips Haute Fréquence)
+            # 🔥 4. ULTRA-SCALP (1m x150) : Micro-Pips 1 Minute
             else:
                 if (sweep_h or fvg_bear or rsi >= 58) and (
                     prix < open_p or ema_9 < ema_21
@@ -351,48 +343,48 @@ def analyser_marche_profil_reel(profil_nom):
 
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE & GESTION PROPRE DU CHANGEMENT DE MODE
+# 🎛️ LE CURSEUR MAÎTRE (ÉCHELLE x20 / x50 / x100 / x150)
 # ==========================================================
-st.title("🎛️ Cockpit Trader Multi-Profils")
+st.title("🎛️ Cockpit Futures USDT Pro")
 
 profil = st.select_slider(
     "👉 Réglez votre style de trading :",
     options=[
-        "🛡️ Conservateur (Swing x5)",
-        "⚖️ Équilibré (Intraday x20)",
-        "⚡ Agressif (Scalp 5m x50)",
-        "🔥 Ultra-Scalper (1m x150)",
+        "🛡️ Conservateur (15m x20)",
+        "⚖️ Intraday (5m x50)",
+        "⚡ Scalping (5m x100)",
+        "🔥 Ultra-Scalp (1m x150)",
     ],
-    value="⚡ Agressif (Scalp 5m x50)",
+    value="⚡ Scalping (5m x100)",
 )
 
-# 🧹 RÉINITIALISATION DE LA MÉMOIRE EN CAS DE CHANGEMENT DE PROFIL
+# Réinitialisation propre lors du changement de curseur
 if st.session_state.profil_precedent != profil:
-    st.session_state.memoire_signaux = {}  # Efface les vieux signaux fantômes !
+    st.session_state.memoire_signaux = {}
     st.session_state.profil_precedent = profil
-    st.cache_data.clear()  # Force le recalcul immédiat pour la nouvelle unité de temps
+    st.cache_data.clear()
 
-# Configuration visuelle
+# Configuration selon votre nouvelle échelle
 if "Conservateur" in profil:
-    levier_suggere = 5
+    levier_suggere = 20
     duree_memoire = 600  # 10 min
     unite_temps = "15m"
-    desc = "🛡️ **Mode Conservateur :** Graphiques 15m. Exige tendance EMA 50 + Sweeps majeurs. Très peu de signaux, zéro stress."
-elif "Équilibré" in profil:
-    levier_suggere = 20
+    desc = "🛡️ **Conservateur (x20) :** Graphiques 15m. Structure majeure + tendance EMA 50. Signaux rares et ultra-filtrés."
+elif "Intraday" in profil:
+    levier_suggere = 50
     duree_memoire = 300  # 5 min
     unite_temps = "5m"
-    desc = "⚖️ **Mode Équilibré :** Graphiques 5m. Ne trade qu'en Killzone (Londres/NY). Bon équilibre."
-elif "Agressif" in profil:
-    levier_suggere = 50
+    desc = "⚖️ **Intraday (x50) :** Graphiques 5m. Ne trade qu'en Killzones (Londres/NY). Bon équilibre gain/sécurité."
+elif "Scalping" in profil:
+    levier_suggere = 100
     duree_memoire = 180  # 3 min
     unite_temps = "5m"
-    desc = "⚡ **Mode Agressif :** Scalping 5m dynamique. Momentum et rejets fréquents."
+    desc = "⚡ **Scalping (x100) :** Scalping 5m dynamique. Détection des impulsions rapides de momentum et FVG."
 else:
     levier_suggere = 150
     duree_memoire = 120  # 2 min
     unite_temps = "1m"
-    desc = "🔥 **Mode Ultra-Scalper :** Flux 1 minute direct. Micro-scalping à haute fréquence."
+    desc = "🔥 **Ultra-Scalp (x150) :** Flux 1 minute direct. Micro-scalping à haute fréquence, sorties éclair."
 
 st.markdown(f'<div class="profile-card">{desc}</div>', unsafe_allow_html=True)
 
@@ -403,7 +395,7 @@ with col_ref:
     if activer_auto:
         sec = 5 if "Ultra" in profil else 10
         if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_master_clean")
+            st_autorefresh(interval=sec * 1000, key="loop_master_v2")
 with col_time:
     maintenant_ts = time.time()
     st.caption(
@@ -427,7 +419,6 @@ for d in donnees_marche:
             "timestamp": maintenant_ts,
         }
 
-# Nettoyage des signaux expirés
 signaux_a_supprimer = [
     p
     for p, info in st.session_state.memoire_signaux.items()
@@ -502,7 +493,7 @@ with tab_radar:
     st.subheader(f"📊 Surveillance des 7 Paires en direct ({unite_temps})")
     st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
-# 2. CALCULATEUR
+# 2. CALCULATEUR SYNCHRONISÉ AVEC LE LEVIER
 with tab_calc:
     st.subheader(f"🧮 Calculateur de Risque (Calibré pour {profil})")
 
