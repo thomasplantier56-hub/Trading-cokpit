@@ -56,6 +56,8 @@ analyzer = SentimentIntensityAnalyzer()
 
 if "memoire_signaux" not in st.session_state:
     st.session_state.memoire_signaux = {}
+if "profil_precedent" not in st.session_state:
+    st.session_state.profil_precedent = None
 
 
 def formater_prix(p):
@@ -126,40 +128,36 @@ def charger_news_ia():
         return 5, []
 
 
-# Moteur Multi-Timeframes & Multi-Profils
+# Moteur Différencié selon le Profil
 @st.cache_data(ttl=10)
-def analyser_marche_profil(profil_nom):
-    # Définition dynamique des paramètres selon le curseur
+def analyser_marche_profil_reel(profil_nom):
+    maintenant = datetime.datetime.now(datetime.timezone.utc)
+    heure_utc = maintenant.hour
+    en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
+
+    # 1. PARAMÉTRAGE DIFFÉRENCIÉ STRICT
     if "Conservateur" in profil_nom:
         intervalle = "15m"
         periode = "5d"
-        lookback = 20
-        rsi_h, rsi_b = 68, 32
-        fvg_mult = 0.20
+        lookback = 30  # ~7h30 de structure
         mult_sl = 0.50
         mult_tp = 3.0
     elif "Équilibré" in profil_nom:
         intervalle = "5m"
         periode = "2d"
-        lookback = 15
-        rsi_h, rsi_b = 64, 36
-        fvg_mult = 0.15
+        lookback = 20  # ~1h40 de structure
         mult_sl = 0.40
         mult_tp = 2.5
     elif "Agressif" in profil_nom:
         intervalle = "5m"
         periode = "2d"
-        lookback = 10
-        rsi_h, rsi_b = 60, 40
-        fvg_mult = 0.12
+        lookback = 10  # ~50 min de structure
         mult_sl = 0.30
-        mult_tp = 2.5
+        mult_tp = 2.0
     else:  # Ultra-Scalper
         intervalle = "1m"
         periode = "1d"
-        lookback = 8
-        rsi_h, rsi_b = 58, 42
-        fvg_mult = 0.08
+        lookback = 8  # 8 minutes
         mult_sl = 0.25
         mult_tp = 2.0
 
@@ -180,7 +178,7 @@ def analyser_marche_profil(profil_nom):
                 if len(PAIRES_RADAR) > 1
                 else data.dropna()
             )
-            if len(df) < 20:
+            if len(df) < 30:
                 continue
 
             prix = float(df["Close"].iloc[-1])
@@ -191,80 +189,147 @@ def analyser_marche_profil(profil_nom):
             high_s = float(df["High"].iloc[-lookback:-1].max())
             low_s = float(df["Low"].iloc[-lookback:-1].min())
 
+            # Moyennes mobiles
+            df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
+            ema_50 = float(df["EMA_50"].iloc[-1])
+
             df["EMA_9"] = df["Close"].ewm(span=9, adjust=False).mean()
             df["EMA_21"] = df["Close"].ewm(span=21, adjust=False).mean()
             ema_9 = float(df["EMA_9"].iloc[-1])
             ema_21 = float(df["EMA_21"].iloc[-1])
 
+            # RSI
             d = df["Close"].diff()
-            g = d.where(d > 0, 0).rolling(7).mean()
-            l = (-d.where(d < 0, 0)).rolling(7).mean()
+            g = d.where(d > 0, 0).rolling(7 if "Ultra" in profil_nom else 14).mean()
+            l = (
+                (-d.where(d < 0, 0))
+                .rolling(7 if "Ultra" in profil_nom else 14)
+                .mean()
+            )
             rsi = float((100 - (100 / (1 + (g / l)))).iloc[-1])
 
+            # ATR
             hl = df["High"] - df["Low"]
             hc = (df["High"] - df["Close"].shift()).abs()
             lc = (df["Low"] - df["Close"].shift()).abs()
             atr = float(
                 pd.concat([hl, hc, lc], axis=1)
                 .max(axis=1)
-                .rolling(10)
+                .rolling(14)
                 .mean()
                 .iloc[-1]
             )
 
-            # Sweeps récents
+            # Sweeps & FVG
             sweep_h = any(
                 df["High"].iloc[-i] > high_s and df["Close"].iloc[-i] < high_s
-                for i in range(1, 4)
+                for i in range(1, 3)
             )
             sweep_l = any(
                 df["Low"].iloc[-i] < low_s and df["Close"].iloc[-i] > low_s
-                for i in range(1, 4)
+                for i in range(1, 3)
             )
 
-            # FVG
             fvg_bear = (df["Low"].iloc[-3] > high) and (
-                (df["Low"].iloc[-3] - high) > (atr * fvg_mult)
+                (df["Low"].iloc[-3] - high) > (atr * 0.15)
             )
             fvg_bull = (low > df["High"].iloc[-3]) and (
-                (low - df["High"].iloc[-3]) > (atr * fvg_mult)
+                (low - df["High"].iloc[-3]) > (atr * 0.15)
             )
 
             signal = None
             opt_p, sl, tp = None, None, None
             motif = ""
 
-            # Signaux SHORT
-            if (sweep_h or fvg_bear) and (prix < open_p or rsi >= rsi_h):
-                signal = "🔴 SHORT"
-                motif = "SMC (Sweep / FVG)"
-                opt_p = high_s if sweep_h else prix
-                dist_sl = max(high - opt_p + (0.04 * atr), mult_sl * atr)
-                sl = opt_p + dist_sl
-                tp = opt_p - (mult_tp * dist_sl)
-            elif ema_9 < ema_21 and rsi >= rsi_h and df["Close"].iloc[-2] > prix:
-                signal = "🔴 SHORT"
-                motif = "Momentum Rejet"
-                opt_p = prix
-                dist_sl = max(high - prix + (0.04 * atr), mult_sl * atr)
-                sl = prix + dist_sl
-                tp = prix - (mult_tp * dist_sl)
+            # ==========================================================
+            # 🎯 LOGIQUE DIFFÉRENCIÉE SELON LE PROFIL
+            # ==========================================================
 
-            # Signaux LONG
-            elif (sweep_l or fvg_bull) and (prix > open_p or rsi <= rsi_b):
-                signal = "🟢 LONG"
-                motif = "SMC (Sweep / FVG)"
-                opt_p = low_s if sweep_l else prix
-                dist_sl = max(opt_p - low + (0.04 * atr), mult_sl * atr)
-                sl = opt_p - dist_sl
-                tp = opt_p + (mult_tp * dist_sl)
-            elif ema_9 > ema_21 and rsi <= rsi_b and df["Close"].iloc[-2] < prix:
-                signal = "🟢 LONG"
-                motif = "Momentum Rebond"
-                opt_p = prix
-                dist_sl = max(prix - low + (0.04 * atr), mult_sl * atr)
-                sl = prix - dist_sl
-                tp = prix + (mult_tp * dist_sl)
+            # 🛡️ 1. MODE CONSERVATEUR (15m, Tendance EMA 50 + Sweeps 8h Majeurs)
+            if "Conservateur" in profil_nom:
+                if prix < ema_50 and sweep_h and rsi >= 65 and (prix < open_p):
+                    signal = "🔴 SHORT"
+                    motif = "SMC Majeur 15m (Sous EMA 50)"
+                    opt_p = high_s
+                    dist_sl = max(high - opt_p + (0.05 * atr), mult_sl * atr)
+                    sl = opt_p + dist_sl
+                    tp = opt_p - (mult_tp * dist_sl)
+                elif (
+                    prix > ema_50
+                    and sweep_l
+                    and rsi <= 35
+                    and (prix > open_p)
+                ):
+                    signal = "🟢 LONG"
+                    motif = "SMC Majeur 15m (Sur EMA 50)"
+                    opt_p = low_s
+                    dist_sl = max(opt_p - low + (0.05 * atr), mult_sl * atr)
+                    sl = opt_p - dist_sl
+                    tp = opt_p + (mult_tp * dist_sl)
+
+            # ⚖️ 2. MODE ÉQUILIBRÉ (5m Killzones Londres/NY uniquement)
+            elif "Équilibré" in profil_nom:
+                if en_killzone:
+                    if (sweep_h or fvg_bear) and (prix < open_p) and rsi >= 60:
+                        signal = "🔴 SHORT"
+                        motif = "Killzone Session (Sweep/FVG 5m)"
+                        opt_p = high_s if sweep_h else prix
+                        dist_sl = max(high - opt_p + (0.05 * atr), mult_sl * atr)
+                        sl = opt_p + dist_sl
+                        tp = opt_p - (mult_tp * dist_sl)
+                    elif (
+                        (sweep_l or fvg_bull)
+                        and (prix > open_p)
+                        and rsi <= 40
+                    ):
+                        signal = "🟢 LONG"
+                        motif = "Killzone Session (Sweep/FVG 5m)"
+                        opt_p = low_s if sweep_l else prix
+                        dist_sl = max(opt_p - low + (0.05 * atr), mult_sl * atr)
+                        sl = opt_p - dist_sl
+                        tp = opt_p + (mult_tp * dist_sl)
+
+            # ⚡ 3. MODE AGRESSIF (5m Scalp Dynamique - Momentum & Rebond)
+            elif "Agressif" in profil_nom:
+                if (sweep_h or fvg_bear or (ema_9 < ema_21 and rsi >= 62)) and (
+                    prix < open_p
+                ):
+                    signal = "🔴 SHORT"
+                    motif = "Scalp 5m Momentum"
+                    opt_p = prix
+                    dist_sl = max(high - prix + (0.04 * atr), mult_sl * atr)
+                    sl = prix + dist_sl
+                    tp = prix - (mult_tp * dist_sl)
+                elif (
+                    sweep_l or fvg_bull or (ema_9 > ema_21 and rsi <= 38)
+                ) and (prix > open_p):
+                    signal = "🟢 LONG"
+                    motif = "Scalp 5m Momentum"
+                    opt_p = prix
+                    dist_sl = max(prix - low + (0.04 * atr), mult_sl * atr)
+                    sl = prix - dist_sl
+                    tp = prix + (mult_tp * dist_sl)
+
+            # 🔥 4. MODE ULTRA-SCALPER (1m Micro-Pips Haute Fréquence)
+            else:
+                if (sweep_h or fvg_bear or rsi >= 58) and (
+                    prix < open_p or ema_9 < ema_21
+                ):
+                    signal = "🔴 SHORT"
+                    motif = "Micro-Scalp 1m"
+                    opt_p = prix
+                    dist_sl = max(high - prix + (0.03 * atr), mult_sl * atr)
+                    sl = prix + dist_sl
+                    tp = prix - (mult_tp * dist_sl)
+                elif (sweep_l or fvg_bull or rsi <= 42) and (
+                    prix > open_p or ema_9 > ema_21
+                ):
+                    signal = "🟢 LONG"
+                    motif = "Micro-Scalp 1m"
+                    opt_p = prix
+                    dist_sl = max(prix - low + (0.03 * atr), mult_sl * atr)
+                    sl = prix - dist_sl
+                    tp = prix + (mult_tp * dist_sl)
 
             nom_paire = f"{paire.split('-')[0]}/USDT"
             resultats.append(
@@ -286,7 +351,7 @@ def analyser_marche_profil(profil_nom):
 
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE DE RISQUE (EN HAUT DE L'ÉCRAN)
+# 🎛️ LE CURSEUR MAÎTRE & GESTION PROPRE DU CHANGEMENT DE MODE
 # ==========================================================
 st.title("🎛️ Cockpit Trader Multi-Profils")
 
@@ -301,27 +366,33 @@ profil = st.select_slider(
     value="⚡ Agressif (Scalp 5m x50)",
 )
 
-# Configuration dynamique selon le curseur
+# 🧹 RÉINITIALISATION DE LA MÉMOIRE EN CAS DE CHANGEMENT DE PROFIL
+if st.session_state.profil_precedent != profil:
+    st.session_state.memoire_signaux = {}  # Efface les vieux signaux fantômes !
+    st.session_state.profil_precedent = profil
+    st.cache_data.clear()  # Force le recalcul immédiat pour la nouvelle unité de temps
+
+# Configuration visuelle
 if "Conservateur" in profil:
     levier_suggere = 5
-    duree_memoire = 600  # 10 minutes
+    duree_memoire = 600  # 10 min
     unite_temps = "15m"
-    desc = "🛡️ **Mode Conservateur :** Graphiques 15m. Signaux rares et ultra-filtrés. Stop large, zéro stress."
+    desc = "🛡️ **Mode Conservateur :** Graphiques 15m. Exige tendance EMA 50 + Sweeps majeurs. Très peu de signaux, zéro stress."
 elif "Équilibré" in profil:
     levier_suggere = 20
-    duree_memoire = 300  # 5 minutes
+    duree_memoire = 300  # 5 min
     unite_temps = "5m"
-    desc = "⚖️ **Mode Équilibré :** Graphiques 5m/15m. Trades de session (Killzones). Bon ratio gains/sécurité."
+    desc = "⚖️ **Mode Équilibré :** Graphiques 5m. Ne trade qu'en Killzone (Londres/NY). Bon équilibre."
 elif "Agressif" in profil:
     levier_suggere = 50
-    duree_memoire = 180  # 3 minutes
+    duree_memoire = 180  # 3 min
     unite_temps = "5m"
-    desc = "⚡ **Mode Agressif :** Scalping 5m dynamique. Opportunités régulières, Stop serré (One Candle Rule)."
+    desc = "⚡ **Mode Agressif :** Scalping 5m dynamique. Momentum et rejets fréquents."
 else:
     levier_suggere = 150
-    duree_memoire = 120  # 2 minutes
+    duree_memoire = 120  # 2 min
     unite_temps = "1m"
-    desc = "🔥 **Mode Ultra-Scalper :** Flux 1 minute direct. Micro-scalping à haute fréquence, sorties rapides."
+    desc = "🔥 **Mode Ultra-Scalper :** Flux 1 minute direct. Micro-scalping à haute fréquence."
 
 st.markdown(f'<div class="profile-card">{desc}</div>', unsafe_allow_html=True)
 
@@ -332,17 +403,17 @@ with col_ref:
     if activer_auto:
         sec = 5 if "Ultra" in profil else 10
         if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_master")
+            st_autorefresh(interval=sec * 1000, key="loop_master_clean")
 with col_time:
     maintenant_ts = time.time()
     st.caption(
-        f"🕒 Heure : **{datetime.datetime.now().strftime('%H:%M:%S')}** | Unité : **{unite_temps}** | Levier suggéré : **x{levier_suggere}**"
+        f"🕒 Heure : **{datetime.datetime.now().strftime('%H:%M:%S')}** | Unité : **{unite_temps}** | Levier : **x{levier_suggere}**"
     )
 
 # ==========================================================
-# 🧠 MÉMOIRE PERSISTANTE DES SIGNAUX
+# 🧠 MÉMOIRE PROPRE DES SIGNAUX
 # ==========================================================
-donnees_marche = analyser_marche_profil(profil)
+donnees_marche = analyser_marche_profil_reel(profil)
 
 for d in donnees_marche:
     paire = d["Paire"]
@@ -354,9 +425,9 @@ for d in donnees_marche:
             "sl": d["SL"],
             "tp": d["TP"],
             "timestamp": maintenant_ts,
-            "profil": profil,
         }
 
+# Nettoyage des signaux expirés
 signaux_a_supprimer = [
     p
     for p, info in st.session_state.memoire_signaux.items()
@@ -377,10 +448,10 @@ tab_radar, tab_calc, tab_marche, tab_journal = st.tabs(
     ]
 )
 
-# 1. RADAR DYNAMIQUE
+# 1. RADAR
 with tab_radar:
     if st.session_state.memoire_signaux:
-        st.subheader(f"🎯 Opportunités Validées ({profil}) :")
+        st.subheader(f"🎯 Opportunités Validées ({unite_temps}) :")
         for paire, info in list(st.session_state.memoire_signaux.items()):
             temps_restant = int(
                 duree_memoire - (maintenant_ts - info["timestamp"])
@@ -401,9 +472,9 @@ with tab_radar:
                     <span class="timer-badge">⏱️ Valide : {minutes_rest}m {secondes_rest:02d}s</span>
                 </div>
                 🎯 <span class="opt-price">ORDRE LIMIT CONSEILLÉ : {formater_prix(info['prix_entree'])} USDT</span><br>
-                🛑 <b>Stop-Loss (One Candle) :</b> {formater_prix(info['sl'])} USDT<br>
+                🛑 <b>Stop-Loss :</b> {formater_prix(info['sl'])} USDT<br>
                 💰 <b>Take-Profit Cible :</b> {formater_prix(info['tp'])} USDT<br>
-                <small>💡 <i>Trade en cours ? Laissez le Stop-Loss et Take-Profit agir sur MEXC sans couper manuellement.</i></small>
+                <small>💡 <i>Trade en cours ? Laissez le Stop-Loss et Take-Profit agir sur MEXC sans couper prématurément.</i></small>
             </div>
             """,
                 unsafe_allow_html=True,
@@ -431,7 +502,7 @@ with tab_radar:
     st.subheader(f"📊 Surveillance des 7 Paires en direct ({unite_temps})")
     st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
-# 2. CALCULATEUR SYNCHRONISÉ AVEC LE PROFIL
+# 2. CALCULATEUR
 with tab_calc:
     st.subheader(f"🧮 Calculateur de Risque (Calibré pour {profil})")
 
