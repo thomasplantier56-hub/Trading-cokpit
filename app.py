@@ -11,6 +11,20 @@ import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import yfinance as yf
 
+# Gestion du fuseau horaire France (Europe/Paris)
+try:
+    import zoneinfo
+
+    TZ_PARIS = zoneinfo.ZoneInfo("Europe/Paris")
+except Exception:
+    TZ_PARIS = datetime.timezone(datetime.timedelta(hours=2))
+
+
+def obtenir_date_heure_paris(format_str="%H:%M:%S"):
+    """Renvoie l'heure actuelle exacte de Paris"""
+    return datetime.datetime.now(TZ_PARIS).strftime(format_str)
+
+
 # Auto-Refresh
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -70,7 +84,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION ATOMIQUE DES COMPTES (SANS ÉCRASEMENT)
+# 👥 GESTION DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -96,7 +110,6 @@ def sauvegarder_tous_les_comptes(comptes):
 
 
 def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
-    """Met à jour un compte en relisant d'abord le fichier frais pour éviter d'écraser les autres"""
     comptes = charger_tous_les_comptes()
     if nom_trader not in comptes:
         comptes[nom_trader] = {
@@ -154,11 +167,12 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
         ia["niveau"] = "Maître Quant Suprême 🥇"
 
     score_p = ia["scores_paires"].get(paire, 1.0)
+    heure_actuelle_fr = obtenir_date_heure_paris("%H:%M")
 
     if win:
         ia["scores_paires"][paire] = round(min(score_p + 0.05, 1.5), 2)
         ia["pertes_consecutives"][motif_famille] = 0
-        lecon = f"✅ [{nom_trader} - {datetime.datetime.now().strftime('%H:%M')}] Victoire sur {paire} ({motif_famille}) : +{pnl:.2f} USDT."
+        lecon = f"✅ [{nom_trader} - {heure_actuelle_fr}] Gain sur {paire} ({motif_famille}) : +{pnl:.2f} USDT."
     else:
         ia["scores_paires"][paire] = round(max(score_p - 0.08, 0.5), 2)
         ia["pertes_consecutives"][motif_famille] = (
@@ -166,9 +180,9 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
         )
         if ia["pertes_consecutives"][motif_famille] >= 2:
             ia["cooldowns"][motif_famille] = time.time() + 720
-            lecon = f"🛡️ [Alerte Collectif] 2 pertes consécutives sur {motif_famille} : Cooldown 12 min activé pour tout le monde !"
+            lecon = f"🛡️ [{heure_actuelle_fr}] 2 pertes sur {motif_famille} : Cooldown 12 min activé pour tout le monde !"
         else:
-            lecon = f"❌ [{nom_trader} - {datetime.datetime.now().strftime('%H:%M')}] Perte sur {paire} ({motif_famille}) : {pnl:.2f} USDT."
+            lecon = f"❌ [{nom_trader} - {heure_actuelle_fr}] Perte sur {paire} ({motif_famille}) : {pnl:.2f} USDT."
 
     ia["lecons_apprises"].insert(0, lecon)
     ia["lecons_apprises"] = ia["lecons_apprises"][:8]
@@ -448,7 +462,7 @@ def analyser_profil(profil_court, donnees_globales):
 
 
 # ==========================================================
-# 👤 GESTION ULTRA-FLUIDE DES PROFILS TRADERS
+# 👤 GESTION DU PROFIL UTILISATEUR
 # ==========================================================
 comptes_actuels = charger_tous_les_comptes()
 liste_noms = list(comptes_actuels.keys())
@@ -488,7 +502,6 @@ with st.sidebar.expander("➕ Créer un nouveau profil"):
             st.sidebar.success(f"Compte actif : {nouveau_nom} !")
             st.rerun()
 
-# Récupération du compte actif toujours à jour
 compte_actif = comptes_actuels.get(
     trader_courant,
     {
@@ -501,7 +514,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE
+# 🎛️ LE CURSEUR MAÎTRE AVEC HEURE DE PARIS
 # ==========================================================
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
@@ -558,11 +571,12 @@ with col_ref:
     if activer_auto:
         sec = 5 if "1m" in unite_temps else 10
         if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_fixed_prod")
+            st_autorefresh(interval=sec * 1000, key="loop_fixed_time_fr")
 with col_time:
     maintenant_ts = time.time()
+    heure_paris = obtenir_date_heure_paris("%H:%M:%S")
     st.caption(
-        f"🕒 Heure : **{datetime.datetime.now().strftime('%H:%M:%S')}** | Profil : **{profil_cle} ({unite_temps} x{levier_suggere})**"
+        f"🕒 Heure de Paris : **{heure_paris}** | Profil : **{profil_cle} ({unite_temps} x{levier_suggere})**"
     )
 
 # ==========================================================
@@ -616,11 +630,12 @@ for p_nom in LISTE_PROFILS:
         del mem_p[p]
 
 # ==========================================================
-# 🤖 AUTO-TRADING SÉCURISÉ POUR LE COMPTE ACTIF
+# 🤖 AUTO-TRADING AVEC HORODATAGE DE PARIS
 # ==========================================================
 if compte_actif.get("auto_actif", False):
 
     def executer_moteur(compte):
+        heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
         for p_nom in LISTE_PROFILS:
             levier_strat = leviers_profils[p_nom]
             for d in donnees_tous_profils.get(p_nom, []):
@@ -666,9 +681,7 @@ if compte_actif.get("auto_actif", False):
                                     "sens": sens,
                                     "pnl": round(pnl_tot, 2),
                                     "win": True,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
+                                    "date": heure_fr_trade,
                                 },
                             )
                             del compte["positions"][cle_pos]
@@ -692,9 +705,7 @@ if compte_actif.get("auto_actif", False):
                                         "sens": sens,
                                         "pnl": round(pnl_tot, 2),
                                         "win": True,
-                                        "date": datetime.datetime.now().strftime(
-                                            "%H:%M:%S"
-                                        ),
+                                        "date": heure_fr_trade,
                                     },
                                 )
                             else:
@@ -717,9 +728,7 @@ if compte_actif.get("auto_actif", False):
                                         "sens": sens,
                                         "pnl": round(pnl, 2),
                                         "win": False,
-                                        "date": datetime.datetime.now().strftime(
-                                            "%H:%M:%S"
-                                        ),
+                                        "date": heure_fr_trade,
                                     },
                                 )
                             del compte["positions"][cle_pos]
@@ -751,9 +760,7 @@ if compte_actif.get("auto_actif", False):
                                     "sens": sens,
                                     "pnl": round(pnl_tot, 2),
                                     "win": True,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
+                                    "date": heure_fr_trade,
                                 },
                             )
                             del compte["positions"][cle_pos]
@@ -777,9 +784,7 @@ if compte_actif.get("auto_actif", False):
                                         "sens": sens,
                                         "pnl": round(pnl_tot, 2),
                                         "win": True,
-                                        "date": datetime.datetime.now().strftime(
-                                            "%H:%M:%S"
-                                        ),
+                                        "date": heure_fr_trade,
                                     },
                                 )
                             else:
@@ -800,9 +805,7 @@ if compte_actif.get("auto_actif", False):
                                         "sens": sens,
                                         "pnl": round(pnl, 2),
                                         "win": False,
-                                        "date": datetime.datetime.now().strftime(
-                                            "%H:%M:%S"
-                                        ),
+                                        "date": heure_fr_trade,
                                     },
                                 )
                             del compte["positions"][cle_pos]
@@ -819,9 +822,7 @@ if compte_actif.get("auto_actif", False):
                         "marge": 100.0,
                         "levier": levier_strat,
                         "tp1_hit": False,
-                        "date_open": datetime.datetime.now().strftime(
-                            "%H:%M:%S"
-                        ),
+                        "date_open": heure_fr_trade,
                     }
 
     mettre_a_jour_un_compte(trader_courant, executer_moteur)
@@ -1187,6 +1188,27 @@ with tab_calc:
         """,
             unsafe_allow_html=True,
         )
+
+        if st.button("💾 Enregistrer dans mon Journal"):
+            with open(
+                FICHIER_JOURNAL, mode="a", newline="", encoding="utf-8"
+            ) as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        obtenir_date_heure_paris("%Y-%m-%d %H:%M:%S"),
+                        paire_sel,
+                        "LONG" if is_long else "SHORT",
+                        f"{p_entree}",
+                        f"{p_sl}",
+                        f"{tp2}",
+                        f"{marge_fixe:.2f}",
+                        f"x{levier_choisi}",
+                        "EN_COURS",
+                        "0.00",
+                    ]
+                )
+            st.success("Trade archivé à l'heure exacte de Paris !")
 
 # 6. MARCHÉ
 with tab_marche:
