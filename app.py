@@ -33,7 +33,6 @@ st.markdown(
     .stApp { background-color: #080A0E; color: #FAFAFA; }
     .metric-card { background-color: #12161F; border-radius: 8px; padding: 12px; border-left: 4px solid #2962FF; margin-bottom: 8px; }
     .xp-card { background-color: #1A1528; border-radius: 8px; padding: 14px; border: 1px solid #9C27B0; margin-bottom: 12px; }
-    .cooldown-badge { background-color: #332005; color: #FFB300; padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: bold; border: 1px solid #FFB300; }
     .user-badge { background-color: #0D2818; color: #00E676; padding: 5px 12px; border-radius: 6px; font-weight: bold; border: 1px solid #00E676; }
     
     .mini-card-conservateur { background-color: #0E1626; border-radius: 8px; padding: 10px; border-top: 4px solid #2979FF; margin-bottom: 8px; min-height: 110px; }
@@ -71,7 +70,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES UTILISATEURS MULTIPLES
+# 👥 GESTION ATOMIQUE DES COMPTES (SANS ÉCRASEMENT)
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -94,6 +93,21 @@ def charger_tous_les_comptes():
 def sauvegarder_tous_les_comptes(comptes):
     with open(FICHIER_COMPTES, "w", encoding="utf-8") as f:
         json.dump(comptes, f, indent=4, ensure_ascii=False)
+
+
+def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
+    """Met à jour un compte en relisant d'abord le fichier frais pour éviter d'écraser les autres"""
+    comptes = charger_tous_les_comptes()
+    if nom_trader not in comptes:
+        comptes[nom_trader] = {
+            "solde": 1000.0,
+            "capital_initial": 1000.0,
+            "auto_actif": False,
+            "positions": {},
+            "historique": [],
+        }
+    modificateur_fn(comptes[nom_trader])
+    sauvegarder_tous_les_comptes(comptes)
 
 
 # ==========================================================
@@ -159,11 +173,6 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
     ia["lecons_apprises"].insert(0, lecon)
     ia["lecons_apprises"] = ia["lecons_apprises"][:8]
     sauvegarder_experience_ia_collective(ia)
-
-
-# Mémoire d'affichage
-if "memoire_par_profil" not in st.session_state:
-    st.session_state.memoire_par_profil = {p: {} for p in LISTE_PROFILS}
 
 
 def formater_prix(p):
@@ -234,9 +243,26 @@ def charger_news_ia():
         return 5, []
 
 
-# Moteur de Marché
 @st.cache_data(ttl=10)
-def analyser_marche_harmonise(profil_court):
+def charger_donnees_marche_globales():
+    donnees = {}
+    for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
+        try:
+            df = yf.download(
+                " ".join(PAIRES_RADAR),
+                interval=intervalle,
+                period=periode,
+                group_by="ticker",
+                auto_adjust=True,
+                progress=False,
+            )
+            donnees[intervalle] = df
+        except Exception:
+            donnees[intervalle] = None
+    return donnees
+
+
+def analyser_profil(profil_court, donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
     en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
@@ -244,32 +270,23 @@ def analyser_marche_harmonise(profil_court):
     ts_actuel = time.time()
 
     if profil_court == "Conservateur":
-        intervalle, periode, lookback = "15m", "5d", 20
+        intervalle, lookback = "15m", 20
         mult_sl, mult_tp1, mult_tp2 = 0.40, 1.8, 3.5
     elif profil_court == "Intraday":
-        intervalle, periode, lookback = "5m", "2d", 15
+        intervalle, lookback = "5m", 15
         mult_sl, mult_tp1, mult_tp2 = 0.35, 1.8, 3.2
     elif profil_court == "Scalping 1m":
-        intervalle, periode, lookback = "1m", "1d", 10
+        intervalle, lookback = "1m", 10
         mult_sl, mult_tp1, mult_tp2 = 0.30, 1.8, 3.5
-    else:  # Ultra-Scalp
-        intervalle, periode, lookback = "1m", "1d", 8
+    else:
+        intervalle, lookback = "1m", 8
         mult_sl, mult_tp1, mult_tp2 = 0.25, 1.8, 3.8
 
-    try:
-        data = yf.download(
-            " ".join(PAIRES_RADAR),
-            interval=intervalle,
-            period=periode,
-            group_by="ticker",
-            auto_adjust=True,
-            progress=False,
-        )
-    except Exception:
+    data = donnees_globales.get(intervalle)
+    if data is None:
         return []
 
     resultats = []
-
     for paire in PAIRES_RADAR:
         nom_court = paire.split("-")[0]
         try:
@@ -374,7 +391,7 @@ def analyser_marche_harmonise(profil_court):
                     ):
                         signal, motif = "🟢 LONG", "Momentum 1m x100"
 
-            else:  # Ultra-Scalp
+            else:
                 motif_famille = "SMC"
                 if atr >= 0.08:
                     if (sweep_h or fvg_bear) and (prix < open_p or rsi >= 58):
@@ -423,7 +440,6 @@ def analyser_marche_harmonise(profil_court):
                     "TP2": tp2,
                     "RSI": f"{rsi:.1f}",
                     "Intervalle": intervalle,
-                    "En_Cooldown": en_cooldown,
                 }
             )
         except Exception:
@@ -432,66 +448,48 @@ def analyser_marche_harmonise(profil_court):
 
 
 # ==========================================================
-# 👤 GESTIONNAIRE DE PROFILS TRADERS VÉRITABLEMENT VERROUILLÉ
+# 👤 GESTION ULTRA-FLUIDE DES PROFILS TRADERS
 # ==========================================================
-comptes_tous = charger_tous_les_comptes()
-liste_noms = list(comptes_tous.keys()) + ["➕ Nouveau Profil Trader"]
+comptes_actuels = charger_tous_les_comptes()
+liste_noms = list(comptes_actuels.keys())
 
-if (
-    "active_trader" not in st.session_state
-    or st.session_state.active_user not in list(comptes_tous.keys())
-):
-    st.session_state.active_user = (
-        "Thomas" if "Thomas" in comptes_tous else list(comptes_tous.keys())[0]
+if "trader_session" not in st.session_state:
+    st.session_state.trader_session = (
+        "Thomas" if "Thomas" in liste_noms else liste_noms[0]
     )
-
-
-def change_user_cb():
-    val = st.session_state.temp_user_select
-    if val != "➕ Nouveau Profil Trader":
-        st.session_state.active_user = val
-
-
-keys_dispos = list(comptes_tous.keys())
-idx_safe = (
-    keys_dispos.index(st.session_state.active_user)
-    if st.session_state.active_user in keys_dispos
-    else 0
-)
 
 st.sidebar.markdown("### 👤 Espace Utilisateur")
-choix_utilisateur = st.sidebar.selectbox(
-    "Connecté en tant que :",
-    liste_noms,
-    index=idx_safe if idx_safe < len(liste_noms) - 1 else 0,
-    key="temp_user_select",
-    on_change=change_user_cb,
+idx_nom = (
+    liste_noms.index(st.session_state.trader_session)
+    if st.session_state.trader_session in liste_noms
+    else 0
 )
+choix_trader = st.sidebar.selectbox(
+    "Connecté en tant que :", liste_noms, index=idx_nom, key="select_trader_box"
+)
+st.session_state.trader_session = choix_trader
+trader_courant = st.session_state.trader_session
 
-if choix_utilisateur == "➕ Nouveau Profil Trader":
-    nouveau_pseudo = st.sidebar.text_input("Votre Prénom / Pseudo :").strip()
-    if st.sidebar.button("Créer mon compte virtuel"):
-        if nouveau_pseudo and nouveau_pseudo not in comptes_tous:
-            comptes_tous[nouveau_pseudo] = {
-                "solde": 1000.0,
-                "capital_initial": 1000.0,
-                "auto_actif": False,
-                "positions": {},
-                "historique": [],
-            }
-            sauvegarder_tous_les_comptes(comptes_tous)
-            st.session_state.active_user = nouveau_pseudo
-            st.sidebar.success(f"Compte créé pour {nouveau_pseudo} !")
+with st.sidebar.expander("➕ Créer un nouveau profil"):
+    nouveau_nom = st.text_input("Prénom / Pseudo :").strip()
+    if st.button("Valider et Rejoindre"):
+        if nouveau_nom:
+            comptes_frais = charger_tous_les_comptes()
+            if nouveau_nom not in comptes_frais:
+                comptes_frais[nouveau_nom] = {
+                    "solde": 1000.0,
+                    "capital_initial": 1000.0,
+                    "auto_actif": False,
+                    "positions": {},
+                    "historique": [],
+                }
+                sauvegarder_tous_les_comptes(comptes_frais)
+            st.session_state.trader_session = nouveau_nom
+            st.sidebar.success(f"Compte actif : {nouveau_nom} !")
             st.rerun()
-    trader_courant = st.session_state.active_user
-else:
-    trader_courant = (
-        st.session_state.active_user
-        if st.session_state.active_user in comptes_tous
-        else choix_utilisateur
-    )
 
-compte_actif = comptes_tous.get(
+# Récupération du compte actif toujours à jour
+compte_actif = comptes_actuels.get(
     trader_courant,
     {
         "solde": 1000.0,
@@ -515,7 +513,7 @@ with col_h2:
     )
 
 profil = st.select_slider(
-    "👉 Réglez votre style de trading :",
+    "👉 Sélectionnez votre profil actif principal :",
     options=[
         "🛡️ Conservateur (15m x20)",
         "⚖️ Intraday (5m x50)",
@@ -560,7 +558,7 @@ with col_ref:
     if activer_auto:
         sec = 5 if "1m" in unite_temps else 10
         if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_final_locked")
+            st_autorefresh(interval=sec * 1000, key="loop_fixed_prod")
 with col_time:
     maintenant_ts = time.time()
     st.caption(
@@ -583,18 +581,23 @@ leviers_profils = {
     "Ultra-Scalp": 150,
 }
 
+donnees_globales = charger_donnees_marche_globales()
 donnees_tous_profils = {}
 
+if "memoire_par_profil" not in st.session_state:
+    st.session_state.memoire_par_profil = {p: {} for p in LISTE_PROFILS}
+
 for p_nom in LISTE_PROFILS:
-    donnees_p = analyser_marche_harmonise(p_nom)
+    if p_nom not in st.session_state.memoire_par_profil:
+        st.session_state.memoire_par_profil[p_nom] = {}
+
+    donnees_p = analyser_profil(p_nom, donnees_globales)
     donnees_tous_profils[p_nom] = donnees_p
 
     for d in donnees_p:
         paire = d["Paire"]
         if d["Signal_Detecte"] is not None:
-            st.session_state.memoire_par_profil.setdefault(p_nom, {})[
-                paire
-            ] = {
+            st.session_state.memoire_par_profil[p_nom][paire] = {
                 "signal": d["Signal_Detecte"],
                 "motif": d["Motif"],
                 "prix_entree": d["Opt_Price"],
@@ -605,82 +608,57 @@ for p_nom in LISTE_PROFILS:
             }
 
     exp = durees_profils.get(p_nom, 120)
-    mem_p = st.session_state.memoire_par_profil.get(p_nom, {})
+    mem_p = st.session_state.memoire_par_profil[p_nom]
     a_suppr = [
         p for p, info in mem_p.items() if maintenant_ts - info["timestamp"] > exp
     ]
     for p in a_suppr:
-        if p in mem_p:
-            del mem_p[p]
+        del mem_p[p]
 
 # ==========================================================
-# 🤖 AUTO-TRADING POUR LE COMPTE ACTIF
+# 🤖 AUTO-TRADING SÉCURISÉ POUR LE COMPTE ACTIF
 # ==========================================================
 if compte_actif.get("auto_actif", False):
-    for p_nom in LISTE_PROFILS:
-        levier_strat = leviers_profils[p_nom]
-        for d in donnees_tous_profils.get(p_nom, []):
-            paire = d["Paire"]
-            cle_pos = f"{p_nom}_{paire}"
-            high = d["High"]
-            low = d["Low"]
-            motif_fam = d["Motif_Famille"]
 
-            if cle_pos in compte_actif["positions"]:
-                pos = compte_actif["positions"][cle_pos]
-                sens = pos["sens"]
-                p_entree = pos["entree"]
-                sl = pos["sl"]
-                tp1 = pos["tp1"]
-                tp2 = pos["tp2"]
-                notionnel = pos["marge"] * pos["levier"]
+    def executer_moteur(compte):
+        for p_nom in LISTE_PROFILS:
+            levier_strat = leviers_profils[p_nom]
+            for d in donnees_tous_profils.get(p_nom, []):
+                paire = d["Paire"]
+                cle_pos = f"{p_nom}_{paire}"
+                high = d["High"]
+                low = d["Low"]
+                motif_fam = d["Motif_Famille"]
 
-                if "SHORT" in sens:
-                    if not pos["tp1_hit"] and low <= tp1:
-                        pos["tp1_hit"] = True
-                        pnl_50 = (
-                            (p_entree - tp1) / p_entree
-                        ) * (notionnel * 0.5)
-                        compte_actif["solde"] += pnl_50
-                        pos["sl"] = p_entree
-                        sauvegarder_tous_les_comptes(comptes_tous)
+                if cle_pos in compte["positions"]:
+                    pos = compte["positions"][cle_pos]
+                    sens = pos["sens"]
+                    p_entree = pos["entree"]
+                    sl = pos["sl"]
+                    tp1 = pos["tp1"]
+                    tp2 = pos["tp2"]
+                    notionnel = pos["marge"] * pos["levier"]
 
-                    elif pos["tp1_hit"] and low <= tp2:
-                        pnl_runner = (
-                            (p_entree - tp2) / p_entree
-                        ) * (notionnel * 0.5)
-                        pnl_tot = (
-                            (p_entree - tp1) / p_entree
-                        ) * (notionnel * 0.5) + pnl_runner
-                        compte_actif["solde"] += pnl_runner
-                        mettre_a_jour_ia_collective(
-                            trader_courant, paire, motif_fam, True, pnl_tot
-                        )
-                        compte_actif["historique"].insert(
-                            0,
-                            {
-                                "strategie": p_nom,
-                                "paire": paire,
-                                "sens": sens,
-                                "pnl": round(pnl_tot, 2),
-                                "win": True,
-                                "date": datetime.datetime.now().strftime(
-                                    "%H:%M:%S"
-                                ),
-                            },
-                        )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif high >= sl:
-                        if pos["tp1_hit"]:
-                            pnl_tot = (
+                    if "SHORT" in sens:
+                        if not pos["tp1_hit"] and low <= tp1:
+                            pos["tp1_hit"] = True
+                            pnl_50 = (
                                 (p_entree - tp1) / p_entree
                             ) * (notionnel * 0.5)
+                            compte["solde"] += pnl_50
+                            pos["sl"] = p_entree
+                        elif pos["tp1_hit"] and low <= tp2:
+                            pnl_runner = (
+                                (p_entree - tp2) / p_entree
+                            ) * (notionnel * 0.5)
+                            pnl_tot = (
+                                (p_entree - tp1) / p_entree
+                            ) * (notionnel * 0.5) + pnl_runner
+                            compte["solde"] += pnl_runner
                             mettre_a_jour_ia_collective(
                                 trader_courant, paire, motif_fam, True, pnl_tot
                             )
-                            compte_actif["historique"].insert(
+                            compte["historique"].insert(
                                 0,
                                 {
                                     "strategie": p_nom,
@@ -693,76 +671,79 @@ if compte_actif.get("auto_actif", False):
                                     ),
                                 },
                             )
-                        else:
-                            pnl = (
-                                (p_entree - sl) / p_entree
-                            ) * notionnel
-                            compte_actif["solde"] += pnl
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, False, pnl
-                            )
-                            compte_actif["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl, 2),
-                                    "win": False,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                },
-                            )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
+                            del compte["positions"][cle_pos]
+                        elif high >= sl:
+                            if pos["tp1_hit"]:
+                                pnl_tot = (
+                                    (p_entree - tp1) / p_entree
+                                ) * (notionnel * 0.5)
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    True,
+                                    pnl_tot,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl_tot, 2),
+                                        "win": True,
+                                        "date": datetime.datetime.now().strftime(
+                                            "%H:%M:%S"
+                                        ),
+                                    },
+                                )
+                            else:
+                                pnl = (
+                                    (p_entree - sl) / p_entree
+                                ) * notionnel
+                                compte["solde"] += pnl
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    False,
+                                    pnl,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl, 2),
+                                        "win": False,
+                                        "date": datetime.datetime.now().strftime(
+                                            "%H:%M:%S"
+                                        ),
+                                    },
+                                )
+                            del compte["positions"][cle_pos]
 
-                elif "LONG" in sens:
-                    if not pos["tp1_hit"] and high >= tp1:
-                        pos["tp1_hit"] = True
-                        pnl_50 = (
-                            (tp1 - p_entree) / p_entree
-                        ) * (notionnel * 0.5)
-                        compte_actif["solde"] += pnl_50
-                        pos["sl"] = p_entree
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif pos["tp1_hit"] and high >= tp2:
-                        pnl_runner = (
-                            (tp2 - p_entree) / p_entree
-                        ) * (notionnel * 0.5)
-                        pnl_tot = (
-                            (tp1 - p_entree) / p_entree
-                        ) * (notionnel * 0.5) + pnl_runner
-                        compte_actif["solde"] += pnl_runner
-                        mettre_a_jour_ia_collective(
-                            trader_courant, paire, motif_fam, True, pnl_tot
-                        )
-                        compte_actif["historique"].insert(
-                            0,
-                            {
-                                "strategie": p_nom,
-                                "paire": paire,
-                                "sens": sens,
-                                "pnl": round(pnl_tot, 2),
-                                "win": True,
-                                "date": datetime.datetime.now().strftime(
-                                    "%H:%M:%S"
-                                ),
-                            },
-                        )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
-
-                    elif low <= sl:
-                        if pos["tp1_hit"]:
-                            pnl_tot = (
+                    elif "LONG" in sens:
+                        if not pos["tp1_hit"] and high >= tp1:
+                            pos["tp1_hit"] = True
+                            pnl_50 = (
                                 (tp1 - p_entree) / p_entree
                             ) * (notionnel * 0.5)
+                            compte["solde"] += pnl_50
+                            pos["sl"] = p_entree
+                        elif pos["tp1_hit"] and high >= tp2:
+                            pnl_runner = (
+                                (tp2 - p_entree) / p_entree
+                            ) * (notionnel * 0.5)
+                            pnl_tot = (
+                                (tp1 - p_entree) / p_entree
+                            ) * (notionnel * 0.5) + pnl_runner
+                            compte["solde"] += pnl_runner
                             mettre_a_jour_ia_collective(
                                 trader_courant, paire, motif_fam, True, pnl_tot
                             )
-                            compte_actif["historique"].insert(
+                            compte["historique"].insert(
                                 0,
                                 {
                                     "strategie": p_nom,
@@ -775,43 +756,76 @@ if compte_actif.get("auto_actif", False):
                                     ),
                                 },
                             )
-                        else:
-                            pnl = ((sl - p_entree) / p_entree) * notionnel
-                            compte_actif["solde"] += pnl
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, False, pnl
-                            )
-                            compte_actif["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl, 2),
-                                    "win": False,
-                                    "date": datetime.datetime.now().strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                },
-                            )
-                        del compte_actif["positions"][cle_pos]
-                        sauvegarder_tous_les_comptes(comptes_tous)
+                            del compte["positions"][cle_pos]
+                        elif low <= sl:
+                            if pos["tp1_hit"]:
+                                pnl_tot = (
+                                    (tp1 - p_entree) / p_entree
+                                ) * (notionnel * 0.5)
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    True,
+                                    pnl_tot,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl_tot, 2),
+                                        "win": True,
+                                        "date": datetime.datetime.now().strftime(
+                                            "%H:%M:%S"
+                                        ),
+                                    },
+                                )
+                            else:
+                                pnl = ((sl - p_entree) / p_entree) * notionnel
+                                compte["solde"] += pnl
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    False,
+                                    pnl,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl, 2),
+                                        "win": False,
+                                        "date": datetime.datetime.now().strftime(
+                                            "%H:%M:%S"
+                                        ),
+                                    },
+                                )
+                            del compte["positions"][cle_pos]
 
-            elif len(compte_actif["positions"]) < 4 and d["Signal_Detecte"]:
-                compte_actif["positions"][cle_pos] = {
-                    "strategie": p_nom,
-                    "sens": d["Signal_Detecte"],
-                    "motif": d["Motif"],
-                    "entree": d["Opt_Price"],
-                    "sl": d["SL"],
-                    "tp1": d["TP1"],
-                    "tp2": d["TP2"],
-                    "marge": 100.0,
-                    "levier": levier_strat,
-                    "tp1_hit": False,
-                    "date_open": datetime.datetime.now().strftime("%H:%M:%S"),
-                }
-                sauvegarder_tous_les_comptes(comptes_tous)
+                elif len(compte["positions"]) < 4 and d["Signal_Detecte"]:
+                    compte["positions"][cle_pos] = {
+                        "strategie": p_nom,
+                        "sens": d["Signal_Detecte"],
+                        "motif": d["Motif"],
+                        "entree": d["Opt_Price"],
+                        "sl": d["SL"],
+                        "tp1": d["TP1"],
+                        "tp2": d["TP2"],
+                        "marge": 100.0,
+                        "levier": levier_strat,
+                        "tp1_hit": False,
+                        "date_open": datetime.datetime.now().strftime(
+                            "%H:%M:%S"
+                        ),
+                    }
+
+    mettre_a_jour_un_compte(trader_courant, executer_moteur)
+    compte_actif = charger_tous_les_comptes().get(trader_courant, compte_actif)
 
 # ==========================================================
 # 👀 VUE PANORAMIQUE DES 4 STYLES
@@ -900,7 +914,7 @@ st.markdown("---")
 # ==========================================================
 # 📱 ONGLETS PRINCIPAUX
 # ==========================================================
-tab_auto, tab_radar, tab_ia, tab_classement, tab_calc, tab_marche, tab_journal = st.tabs(
+tab_auto, tab_radar, tab_ia, tab_classement, tab_calc, tab_marche = st.tabs(
     [
         f"🤖 Mon Auto-Trader ({trader_courant})",
         f"⚡ Radar ({profil_cle})",
@@ -908,7 +922,6 @@ tab_auto, tab_radar, tab_ia, tab_classement, tab_calc, tab_marche, tab_journal =
         "🏆 Classement Amis",
         f"🧮 Calculateur (x{levier_suggere})",
         "🌍 Marché & News",
-        "📊 Journal Trades",
     ]
 )
 
@@ -918,7 +931,7 @@ with tab_auto:
     pnl_auto = compte_actif["solde"] - compte_actif["capital_initial"]
 
     with col_t1:
-        st.subheader(f"💼 Portefeuille Virtuel de {trader_courant}")
+        st.subheader(f"💼 Portefeuille de {trader_courant}")
         st.markdown(
             f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT`  |  **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT ({pnl_auto/10:+.2f}%)</span>",
             unsafe_allow_html=True,
@@ -926,12 +939,15 @@ with tab_auto:
 
     with col_t2:
         nouvel_etat = st.toggle(
-            "⚡ ACTIVER L'AUTO-TRADING",
+            "⚡ ACTIVER MON AUTO-TRADING",
             value=compte_actif.get("auto_actif", False),
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
-            compte_actif["auto_actif"] = nouvel_etat
-            sauvegarder_tous_les_comptes(comptes_tous)
+
+            def toggle_etat(c):
+                c["auto_actif"] = nouvel_etat
+
+            mettre_a_jour_un_compte(trader_courant, toggle_etat)
             st.rerun()
 
     if compte_actif.get("auto_actif", False):
@@ -967,12 +983,15 @@ with tab_auto:
 
     st.markdown("---")
     if st.button(f"🔄 Réinitialiser le compte de {trader_courant} à 1000 USDT"):
-        compte_actif["solde"] = 1000.0
-        compte_actif["capital_initial"] = 1000.0
-        compte_actif["auto_actif"] = False
-        compte_actif["positions"] = {}
-        compte_actif["historique"] = []
-        sauvegarder_tous_les_comptes(comptes_tous)
+
+        def reset_c(c):
+            c["solde"] = 1000.0
+            c["capital_initial"] = 1000.0
+            c["auto_actif"] = False
+            c["positions"] = {}
+            c["historique"] = []
+
+        mettre_a_jour_un_compte(trader_courant, reset_c)
         st.success(f"Compte de {trader_courant} réinitialisé !")
         st.rerun()
 
@@ -1077,7 +1096,8 @@ with tab_ia:
 with tab_classement:
     st.subheader("🏆 Classement en Direct des Traders")
     liste_classement = []
-    for nom, c in comptes_tous.items():
+    comptes_live = charger_tous_les_comptes()
+    for nom, c in comptes_live.items():
         pnl = c["solde"] - c["capital_initial"]
         trades_nb = len(c["historique"])
         wins = sum(1 for t in c["historique"] if t.get("win", False))
@@ -1168,12 +1188,6 @@ with tab_calc:
             unsafe_allow_html=True,
         )
 
-        if not securite_validee or (pct_dist >= dist_liq_pct * 0.7):
-            st.markdown(
-                '<div class="danger-liq">🚨 DANGER : Stop-Loss trop proche de la liquidation !</div>',
-                unsafe_allow_html=True,
-            )
-
 # 6. MARCHÉ
 with tab_marche:
     fg_score, fg_sentiment = charger_fear_and_greed()
@@ -1207,15 +1221,3 @@ with tab_marche:
     st.subheader("📰 Dernières dépêches mondiales")
     for tag, titre in news:
         st.markdown(f"**{tag}** — {titre}")
-
-# 7. JOURNAL DES TRADES
-with tab_journal:
-    st.subheader("📊 Historique des Trades USDT")
-    if os.path.exists(FICHIER_JOURNAL):
-        try:
-            df_j = pd.read_csv(
-                FICHIER_JOURNAL, encoding="utf-8", encoding_errors="ignore"
-            )
-        except Exception:
-            df_j = pd.read_csv(FICHIER_JOURNAL, encoding="latin1")
-        st.dataframe(df_j, hide_index=True)
