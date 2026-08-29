@@ -40,7 +40,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# CSS ÉCO-BATTERIE (Noir Pur OLED + Zéro Animation GPU)
+# CSS ÉCO-BATTERIE (Noir Pur OLED)
 st.markdown(
     """
 <style>
@@ -50,7 +50,6 @@ st.markdown(
     .user-badge { background-color: #061A0E; color: #00E676; padding: 4px 8px; border-radius: 5px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; }
     
     .news-box { background-color: #0D1117; border-radius: 6px; padding: 8px 12px; border: 1px solid #21262D; margin-bottom: 10px; font-size: 12px; }
-    
     .tag-bull { color: #00E676; font-weight: bold; background: rgba(0,230,118,0.15); padding: 2px 6px; border-radius: 3px; }
     .tag-bear { color: #FF1744; font-weight: bold; background: rgba(255,23,68,0.15); padding: 2px 6px; border-radius: 3px; }
     .tag-neu { color: #8B949E; font-weight: bold; background: rgba(139,148,158,0.15); padding: 2px 6px; border-radius: 3px; }
@@ -88,7 +87,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION ATOMIQUE DES COMPTES
+# 👥 GESTION DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -135,7 +134,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
 
 
 # ==========================================================
-# 🧠 CERVEAU COLLECTIF UNIQUE DE L'IA
+# 🧠 CERVEAU COLLECTIF DE L'IA
 # ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
@@ -203,6 +202,10 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
 def formater_prix(p):
     if p is None:
         return "N/A"
+    try:
+        p = float(p)
+    except Exception:
+        return str(p)
     if p < 0.1:
         return f"{p:.5f}"
     elif p < 1.0:
@@ -510,7 +513,7 @@ with col_h1:
 with col_h2:
     activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
     if activer_auto and has_autorefresh:
-        st_autorefresh(interval=30 * 1000, key="loop_eco_mobile_range")
+        st_autorefresh(interval=30 * 1000, key="loop_eco_final_fix")
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -616,7 +619,7 @@ for p_nom in LISTE_PROFILS:
         del mem_p[p]
 
 # ==========================================================
-# 🤖 AUTO-TRADING POUR LE COMPTE ACTIF
+# 🤖 AUTO-TRADING SÉCURISÉ
 # ==========================================================
 if compte_actif.get("auto_actif", False):
 
@@ -633,22 +636,24 @@ if compte_actif.get("auto_actif", False):
 
                 if cle_pos in compte["positions"]:
                     pos = compte["positions"][cle_pos]
-                    sens = pos["sens"]
-                    p_entree = pos["entree"]
-                    sl = pos["sl"]
-                    tp1 = pos["tp1"]
-                    tp2 = pos["tp2"]
-                    notionnel = pos["marge"] * pos["levier"]
+                    sens = pos.get("sens", "LONG")
+                    p_entree = float(pos.get("entree", d["Prix"]))
+                    sl = float(pos.get("sl", 0))
+                    tp1 = float(pos.get("tp1", 0))
+                    tp2 = float(pos.get("tp2", 0))
+                    marge_p = float(pos.get("marge", 100.0))
+                    levier_p = float(pos.get("levier", levier_strat))
+                    notionnel = marge_p * levier_p
 
                     if "SHORT" in sens:
-                        if not pos["tp1_hit"] and low <= tp1:
+                        if not pos.get("tp1_hit", False) and low <= tp1:
                             pos["tp1_hit"] = True
                             pnl_50 = (
                                 (p_entree - tp1) / p_entree
                             ) * (notionnel * 0.5)
                             compte["solde"] += pnl_50
                             pos["sl"] = p_entree
-                        elif pos["tp1_hit"] and low <= tp2:
+                        elif pos.get("tp1_hit", False) and low <= tp2:
                             pnl_runner = (
                                 (p_entree - tp2) / p_entree
                             ) * (notionnel * 0.5)
@@ -672,7 +677,7 @@ if compte_actif.get("auto_actif", False):
                             )
                             del compte["positions"][cle_pos]
                         elif high >= sl:
-                            if pos["tp1_hit"]:
+                            if pos.get("tp1_hit", False):
                                 pnl_tot = (
                                     (p_entree - tp1) / p_entree
                                 ) * (notionnel * 0.5)
@@ -720,14 +725,14 @@ if compte_actif.get("auto_actif", False):
                             del compte["positions"][cle_pos]
 
                     elif "LONG" in sens:
-                        if not pos["tp1_hit"] and high >= tp1:
+                        if not pos.get("tp1_hit", False) and high >= tp1:
                             pos["tp1_hit"] = True
                             pnl_50 = (
                                 (tp1 - p_entree) / p_entree
                             ) * (notionnel * 0.5)
                             compte["solde"] += pnl_50
                             pos["sl"] = p_entree
-                        elif pos["tp1_hit"] and high >= tp2:
+                        elif pos.get("tp1_hit", False) and high >= tp2:
                             pnl_runner = (
                                 (tp2 - p_entree) / p_entree
                             ) * (notionnel * 0.5)
@@ -751,7 +756,7 @@ if compte_actif.get("auto_actif", False):
                             )
                             del compte["positions"][cle_pos]
                         elif low <= sl:
-                            if pos["tp1_hit"]:
+                            if pos.get("tp1_hit", False):
                                 pnl_tot = (
                                     (tp1 - p_entree) / p_entree
                                 ) * (notionnel * 0.5)
@@ -932,15 +937,28 @@ with tab_auto:
             mettre_a_jour_un_compte(trader_courant, toggle_etat)
             st.rerun()
 
-    if compte_actif["positions"]:
+    if compte_actif.get("positions"):
         st.markdown("#### 🚀 Positions Ouvertes :")
         for cle, pos in list(compte_actif["positions"].items()):
+            # Blindage défensif
+            strat_nom = pos.get("strategie", "Auto")
+            paire_nom = cle.split("_")[1] if "_" in cle else cle
+            sens_nom = pos.get("sens", "LONG")
+            levier_nom = pos.get("levier", 50)
+            entree_val = formater_prix(pos.get("entree", 0))
+            sl_val = formater_prix(pos.get("sl", 0))
+            tp1_val = formater_prix(pos.get("tp1", 0))
+            tp2_val = formater_prix(pos.get("tp2", 0))
+            tp1_statut = (
+                "✅ Breakeven" if pos.get("tp1_hit", False) else "⏳ Attente"
+            )
+
             st.markdown(
                 f"""
             <div class="pos-card">
-                <b>[{pos['strategie']}] {cle.split('_')[1]} ({pos['sens']} x{pos['levier']})</b><br>
-                🎯 <b>Entrée :</b> {formater_prix(pos['entree'])} | 🛑 <b>SL :</b> {formater_prix(pos['sl'])}<br>
-                💰 <b>TP1 :</b> {formater_prix(pos['tp1'])} [{'✅ Breakeven' if pos['tp1_hit'] else '⏳ Attente'}] | 🚀 <b>TP2 :</b> {formater_prix(pos['tp2'])}
+                <b>[{strat_nom}] {paire_nom} ({sens_nom} x{levier_nom})</b><br>
+                🎯 <b>Entrée :</b> {entree_val} | 🛑 <b>SL :</b> {sl_val}<br>
+                💰 <b>TP1 :</b> {tp1_val} [{tp1_statut}] | 🚀 <b>TP2 :</b> {tp2_val}
             </div>
             """,
                 unsafe_allow_html=True,
@@ -948,7 +966,7 @@ with tab_auto:
     else:
         st.caption("👀 Aucune position ouverte.")
 
-    if compte_actif["historique"]:
+    if compte_actif.get("historique"):
         st.markdown("#### 📜 Derniers Trades Clôturés :")
         st.dataframe(
             pd.DataFrame(compte_actif["historique"][:5]), hide_index=True
@@ -966,7 +984,7 @@ with tab_auto:
         mettre_a_jour_un_compte(trader_courant, reset_c)
         st.rerun()
 
-# 2. RADAR (AVEC LA COLONNE RANGE DE STRUCTURE RÉINTÉGRÉE)
+# 2. RADAR
 with tab_radar:
     memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
     if memoire_active:
@@ -1003,9 +1021,9 @@ with tab_radar:
         lignes_tableau.append(
             {
                 "Paire": paire,
-                "Prix Actuel": formater_prix(d["Prix"]),
+                "Prix": formater_prix(d["Prix"]),
                 "Statut": statut,
-                "Range Structure": d["Range_Str"],  # 🌟 COLONNE RANGE RÉINTÉGRÉE !
+                "Range Structure": d["Range_Str"],
                 "RSI": d["RSI"],
             }
         )
@@ -1032,8 +1050,8 @@ with tab_classement:
     comptes_live = charger_tous_les_comptes()
     for nom, c in comptes_live.items():
         pnl = c["solde"] - c["capital_initial"]
-        trades_nb = len(c["historique"])
-        wins = sum(1 for t in c["historique"] if t.get("win", False))
+        trades_nb = len(c.get("historique", []))
+        wins = sum(1 for t in c.get("historique", []) if t.get("win", False))
         wr = (wins / trades_nb * 100) if trades_nb > 0 else 0.0
         liste_classement.append(
             {
