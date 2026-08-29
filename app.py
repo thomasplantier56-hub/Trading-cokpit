@@ -34,13 +34,13 @@ except ImportError:
 
 # Configuration Mobile First & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Trader Mobile",
+    page_title="Cockpit Trader Pro",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# CSS ÉCO-BATTERIE NOIR PUR OLED
+# CSS NOIR PUR OLED (Fluide & Silencieux)
 st.markdown(
     """
 <style>
@@ -93,22 +93,37 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX EN DIRECT DE MEXC (SUB-SECONDE)
+# ⚡ FLUX DE PRIX EN DIRECT INSTANTANÉ (SANS AUCUN CACHE BLOQUANT)
 # ==========================================================
-@st.cache_data(ttl=4)
-def charger_prix_direct_mexc():
-    """Récupère les vrais prix au tick près de MEXC Futures"""
+def obtenir_prix_live_mexc():
+    """Récupère les vrais prix au tick près sans cache pour que l'auto-refresh soit 100% réel"""
+    prix_dict = {}
+
+    # Source 1 : MEXC Futures Ticker direct (<40ms)
     try:
         url = "https://contract.mexc.com/api/v1/contract/ticker"
-        res = requests.get(url, timeout=2).json()
-        prix_dict = {}
+        res = requests.get(url, timeout=2.5).json()
         if res.get("success", False):
             for item in res.get("data", []):
                 sym = item.get("symbol", "").replace("_", "/")
                 prix_dict[sym] = float(item.get("lastPrice", 0))
-        return prix_dict
     except Exception:
-        return {}
+        pass
+
+    # Source 2 : Relais de secours rapide si le serveur cloud subit un timeout
+    if not prix_dict or "SOL/USDT" not in prix_dict:
+        try:
+            url_binance = "https://fapi.binance.com/fapi/v1/ticker/price"
+            res2 = requests.get(url_binance, timeout=2.0).json()
+            for it in res2:
+                s_name = it.get("symbol", "")
+                for base in ["SOL", "BTC", "ETH", "XRP", "ZEC", "BNB"]:
+                    if s_name == f"{base}USDT":
+                        prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
+        except Exception:
+            pass
+
+    return prix_dict
 
 
 # ==========================================================
@@ -159,7 +174,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
 
 
 # ==========================================================
-# 🧠 CERVEAU COLLECTIF DE L'IA
+# 🧠 CERVEAU COLLECTIF DE L'IA & APPRENTISSAGE
 # ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
@@ -175,7 +190,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif prêt. Flux direct MEXC actif."
+            "Cerveau collectif prêt. Flux direct ultra-réactif activé."
         ],
     }
 
@@ -276,7 +291,8 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=10)
+# Cache court de 8 secondes pour recalculer la structure
+@st.cache_data(ttl=8)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -665,7 +681,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🔋 EN-TÊTE & NEWS
+# 🔋 EN-TÊTE & REFRESH 10S
 # ==========================================================
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
@@ -687,7 +703,7 @@ with col_h2:
 
     if intervalle_sec > 0 and has_autorefresh:
         st_autorefresh(
-            interval=intervalle_sec * 1000, key="loop_live_mexc_ticker"
+            interval=intervalle_sec * 1000, key="loop_real_direct_mexc_ticker"
         )
 
 # Bouton manuel pour forcer le recalcul
@@ -706,11 +722,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Chargement données
+# Chargement données & Prix live directs
 donnees_globales = charger_donnees_marche_globales()
-prix_mexc_live = (
-    charger_prix_direct_mexc()
-)  # 🌟 FLUX DIRECT SUB-SECONDE DE MEXC !
+prix_mexc_direct = obtenir_prix_live_mexc()  # 🌟 SANS CACHE, EN TEMPS RÉEL !
 
 # ==========================================================
 # 👑 SECTION DU SETUP A+ DU JOUR
@@ -1145,7 +1159,7 @@ with tab_auto:
         nouvel_etat = st.toggle(
             "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_live_mexc",
+            key="toggle_auto_live_mexc_ticker",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
@@ -1201,7 +1215,7 @@ with tab_auto:
         mettre_a_jour_un_compte(trader_courant, reset_c)
         st.rerun()
 
-# 2. RADAR AVEC PRIX DIRECT MEXC
+# 2. RADAR AVEC PRIX DIRECTS SANS LATENCE
 with tab_radar:
     memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
     if memoire_active:
@@ -1235,8 +1249,8 @@ with tab_radar:
             if paire in memoire_active
             else "VEILLE ⚪"
         )
-        # Priorité au prix MEXC Direct s'il est disponible
-        prix_reel_mexc = prix_mexc_live.get(paire, d["Prix"])
+        # Priorité absolue au prix sub-seconde MEXC en direct
+        prix_reel_mexc = prix_mexc_direct.get(paire, d["Prix"])
 
         lignes_tableau.append(
             {
