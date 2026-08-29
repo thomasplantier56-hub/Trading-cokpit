@@ -93,7 +93,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX EN DIRECT INSTANTANÉ (SANS LATENCE)
+# ⚡ TRIPLE FLUX DE PRIX DIRECT (SANS CACHE & SANS LATENCE)
 # ==========================================================
 def obtenir_prix_live_mexc_garanti():
     headers = {
@@ -300,7 +300,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-# Cache court de 5 secondes pour la structure technique
+# Cache court de 5 secondes pour la structure
 @st.cache_data(ttl=5)
 def charger_donnees_marche_globales():
     donnees = {}
@@ -690,7 +690,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🔋 EN-TÊTE & AUTO-REFRESH SÉCURISÉ
+# 🔋 EN-TÊTE & AUTO-REFRESH 10S
 # ==========================================================
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
@@ -715,6 +715,11 @@ with col_h2:
             interval=intervalle_sec * 1000, key="loop_final_pure_live_feed"
         )
 
+# Bouton manuel
+if st.button("🔄 Rafraîchir les cours en direct", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
+
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
 st.markdown(
@@ -728,7 +733,9 @@ st.markdown(
 
 # Chargement données & Prix live directs
 donnees_globales = charger_donnees_marche_globales()
-prix_mexc_direct = obtenir_prix_live_mexc_garanti()
+prix_mexc_direct = (
+    obtenir_prix_live_mexc_garanti()
+)  # 🌟 SANS CACHE, AU TICK PRÈS !
 
 # ==========================================================
 # 👑 SECTION DU SETUP A+ DU JOUR
@@ -1253,6 +1260,7 @@ with tab_radar:
             if paire in memoire_active
             else "VEILLE ⚪"
         )
+        # Affichage du vrai prix MEXC en direct
         prix_reel_mexc = prix_mexc_direct.get(paire, d["Prix"])
 
         lignes_tableau.append(
