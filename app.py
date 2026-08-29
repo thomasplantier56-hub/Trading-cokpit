@@ -62,7 +62,7 @@ st.markdown(
     .mini-card-scalping { background-color: #140F04; border-radius: 6px; padding: 8px; border-top: 3px solid #FF9100; margin-bottom: 6px; }
     .mini-card-ultrascalp { background-color: #140508; border-radius: 6px; padding: 8px; border-top: 3px solid #FF1744; margin-bottom: 6px; }
     
-    .pos-card { background-color: #0D1117; border-radius: 6px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
+    .pos-card { background-color: #151A24; border-radius: 6px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
     .alert-card-long { background-color: #04140B; border-radius: 6px; padding: 10px; border-left: 4px solid #00E676; margin-bottom: 8px; }
     .alert-card-short { background-color: #170508; border-radius: 6px; padding: 10px; border-left: 4px solid #FF1744; margin-bottom: 8px; }
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
@@ -92,7 +92,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES
+# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES (0 BLOCAGE)
 # ==========================================================
 def obtenir_prix_live_multi_sources():
     prix_dict = {}
@@ -507,6 +507,12 @@ def analyser_profil(profil_court, donnees_globales):
             high_s_1m = float(df_1["High"].iloc[-9:-2].max())
             low_s_1m = float(df_1["Low"].iloc[-9:-2].min())
 
+            # Calculs RSI 1m & 15m
+            d = df_1["Close"].diff()
+            g = d.where(d > 0, 0).rolling(7).mean()
+            l = (-d.where(d < 0, 0)).rolling(7).mean()
+            rsi_val = float((100 - (100 / (1 + (g / l)))).iloc[-1])
+
             hl = df_1["High"] - df_1["Low"]
             hc = (df_1["High"] - df_1["Close"].shift()).abs()
             lc = (df_1["Low"] - df_1["Close"].shift()).abs()
@@ -694,6 +700,7 @@ def analyser_profil(profil_court, donnees_globales):
                     "SL": sl,
                     "TP1": tp1,
                     "TP2": tp2,
+                    "RSI": f"{rsi_val:.1f}",  # 🌟 RSI INCLUS ET GARANTI ICI !
                     "Intervalle": "1m",
                 }
             )
@@ -834,7 +841,7 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ FLUIDE (PRIX EN DIRECT)
+# 🌟 FRAGMENT AUTO-ACTUALISÉ SANS AUCUN CRASH
 # ==========================================================
 @st.fragment(run_every="10s")
 def bloc_live_auto_actualise():
@@ -986,16 +993,16 @@ def bloc_live_auto_actualise():
             for p_nom in LISTE_PROFILS:
                 levier_strat = leviers_profils[p_nom]
                 for d in donnees_tous_profils.get(p_nom, []):
-                    paire = d["Paire"]
+                    paire = d.get("Paire", "")
                     cle_pos = f"{p_nom}_{paire}"
-                    high = d["High"]
-                    low = d["Low"]
-                    motif_fam = d["Motif_Famille"]
+                    high = d.get("High", d.get("Prix", 0))
+                    low = d.get("Low", d.get("Prix", 0))
+                    motif_fam = d.get("Motif_Famille", "SMC")
 
-                    if cle_pos in compte["positions"]:
+                    if cle_pos in compte.get("positions", {}):
                         pos = compte["positions"][cle_pos]
                         sens = pos.get("sens", "LONG")
-                        p_entree = float(pos.get("entree", d["Prix"]))
+                        p_entree = float(pos.get("entree", d.get("Prix", 0)))
                         sl = float(pos.get("sl", 0))
                         tp1 = float(pos.get("tp1", 0))
                         tp2 = float(pos.get("tp2", 0))
@@ -1167,7 +1174,9 @@ def bloc_live_auto_actualise():
                                     )
                                 del compte["positions"][cle_pos]
 
-                    elif len(compte["positions"]) < 4 and d["Signal_Detecte"]:
+                    elif len(compte["positions"]) < 4 and d.get(
+                        "Signal_Detecte"
+                    ):
                         compte["positions"][cle_pos] = {
                             "strategie": p_nom,
                             "sens": d["Signal_Detecte"],
@@ -1210,7 +1219,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ ACTIVER L'AUTO",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_smooth_v4",
+                key="toggle_auto_live_smooth_final_v5",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1220,7 +1229,7 @@ def bloc_live_auto_actualise():
                 mettre_a_jour_un_compte(trader_courant, toggle_etat)
                 st.rerun()
 
-        if c_fresh["positions"]:
+        if c_fresh.get("positions"):
             st.markdown("#### 🚀 Positions Ouvertes :")
             for cle, pos in list(c_fresh["positions"].items()):
                 strat_nom = pos.get("strategie", "Auto")
@@ -1248,13 +1257,13 @@ def bloc_live_auto_actualise():
         else:
             st.caption("👀 Aucune position ouverte pour le moment.")
 
-        if c_fresh["historique"]:
+        if c_fresh.get("historique"):
             st.markdown("#### 📜 Derniers Trades Clôturés :")
             st.dataframe(
                 pd.DataFrame(c_fresh["historique"][:5]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v4"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v5"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1293,21 +1302,21 @@ def bloc_live_auto_actualise():
         donnees_affichees = donnees_tous_profils.get(profil_cle, [])
         lignes_tableau = []
         for d in donnees_affichees:
-            paire = d["Paire"]
+            paire = d.get("Paire", "")
             statut = (
                 memoire_active[paire]["signal"]
                 if paire in memoire_active
                 else "VEILLE ⚪"
             )
-            prix_reel_mexc = prix_mexc_direct.get(paire, d["Prix"])
+            prix_reel_mexc = prix_mexc_direct.get(paire, d.get("Prix", 0))
 
             lignes_tableau.append(
                 {
                     "Paire": paire,
                     "Prix Actuel": formater_prix(prix_reel_mexc),
                     "Statut": statut,
-                    "Range 15m": d["Range_Str"],
-                    "RSI": d["RSI"],
+                    "Range 15m": d.get("Range_Str", "N/A"),
+                    "RSI": d.get("RSI", "50.0"),  # 🌟 SÉCURISÉ AVEC .GET() !
                 }
             )
         st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
