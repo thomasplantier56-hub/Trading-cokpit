@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import yfinance as yf
 
@@ -24,22 +25,15 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
     return datetime.datetime.now(TZ_PARIS).strftime(format_str)
 
 
-# Auto-Refresh
-try:
-    from streamlit_autorefresh import st_autorefresh
-
-    has_autorefresh = True
-except ImportError:
-    has_autorefresh = False
-
 # Configuration Mobile First & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Trader Pro & Setup A+",
-    page_icon="👑",
+    page_title="Cockpit Trader Pro",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# CSS ÉCO-BATTERIE NOIR PUR OLED + STYLES
 st.markdown(
     """
 <style>
@@ -68,6 +62,7 @@ st.markdown(
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
     .tp-runner { color: #00E676; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #161B22; color: #00E676; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    .danger-liq { background-color: #4A0000; border-radius: 8px; padding: 10px; border: 1px solid #FF1744; color: #FFF; font-weight: bold; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -91,7 +86,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES TRADERS
+# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -138,7 +133,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
 
 
 # ==========================================================
-# 🧠 CERVEAU COLLECTIF DE L'IA
+# 🧠 CERVEAU COLLECTIF DE L'IA & APPRENTISSAGE
 # ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
@@ -154,7 +149,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif prêt. Mode Éco Mobile activé."
+            "Cerveau collectif unifié prêt. Mode Intelligent Activé."
         ],
     }
 
@@ -255,7 +250,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=15)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -275,7 +270,7 @@ def charger_donnees_marche_globales():
 
 
 # ==========================================================
-# 👑 DÉTECTEUR DU SETUP A+ AVEC EXPIRATION AUTOMATIQUE
+# 👑 DÉTECTEUR DU SETUP A+ DU JOUR
 # ==========================================================
 def detecter_setup_a_plus_du_jour(donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
@@ -321,7 +316,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 .iloc[-1]
             )
 
-            # Séquence récente (sur les 2 dernières bougies = 30 min max)
             sweep_h = any(
                 df["High"].iloc[-k] > high_s and df["Close"].iloc[-k] < high_s
                 for k in range(1, 3)
@@ -338,7 +332,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 (low - df["High"].iloc[-3]) > (atr * 0.15)
             )
 
-            # 🎯 SHORT A+ : Le cours doit être ENCORE PROCHE du prix d'entrée (pas déjà parti au TP !)
             if (
                 en_killzone
                 and prix < ema_50
@@ -350,7 +343,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 sl = entree_opt + dist
                 tp = entree_opt - (4.2 * dist)
 
-                # FILTRE D'EXPIRATION : Si le prix actuel a déjà dépassé le TP ou le SL, le setup expire !
                 if (
                     prix > tp
                     and prix < sl
@@ -375,7 +367,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                         }
                     )
 
-            # 🎯 LONG A+ : Le cours doit être ENCORE PROCHE du prix d'entrée
             elif (
                 en_killzone
                 and prix > ema_50
@@ -413,7 +404,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
         except Exception:
             continue
 
-    # Renvoie le setup le plus récent ou None
     return setups_valides[0] if setups_valides else None
 
 
@@ -649,6 +639,38 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
+# 🧠 DÉTECTION INTELLIGENTE DU PREMIER PLAN / ARRIÈRE PLAN
+# ==========================================================
+# JavaScript Page Visibility API : 8s au premier plan, 60s en arrière-plan
+js_adaptive_refresh = """
+<script>
+(function() {
+    const FAST_MS = 8000;    // 8 secondes quand l'écran est actif sous vos yeux
+    const ECO_MS = 60000;    // 60 secondes en arrière-plan / écran verrouillé
+    let timerId = null;
+
+    function resetTimer() {
+        if (timerId) clearTimeout(timerId);
+        let isHidden = false;
+        try { isHidden = window.parent.document.hidden; }
+        catch(e) { isHidden = document.hidden; }
+
+        let delay = isHidden ? ECO_MS : FAST_MS;
+        timerId = setTimeout(function() {
+            window.parent.location.reload();
+        }, delay);
+    }
+
+    try { window.parent.document.addEventListener("visibilitychange", resetTimer); }
+    catch(e) { document.addEventListener("visibilitychange", resetTimer); }
+
+    resetTimer();
+})();
+</script>
+"""
+components.html(js_adaptive_refresh, height=0, width=0)
+
+# ==========================================================
 # 🔋 EN-TÊTE & NEWS
 # ==========================================================
 col_h1, col_h2 = st.columns([2, 1])
@@ -658,9 +680,10 @@ with col_h1:
         unsafe_allow_html=True,
     )
 with col_h2:
-    activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
-    if activer_auto and has_autorefresh:
-        st_autorefresh(interval=30 * 1000, key="loop_eco_final_fresh")
+    st.markdown(
+        f"<div style='text-align:right; font-size:12px; color:#00E676;'>🟢 <b>Actif (8s)</b> | 🔋 <i>Éco Arrière-Plan</i></div>",
+        unsafe_allow_html=True,
+    )
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -676,7 +699,7 @@ st.markdown(
 donnees_globales = charger_donnees_marche_globales()
 
 # ==========================================================
-# 👑 SECTION ROYALE DU SETUP A+ (AVEC EXPIRATION DYNAMIQUE)
+# 👑 SECTION DU SETUP A+ DU JOUR
 # ==========================================================
 setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
 
@@ -1108,7 +1131,7 @@ with tab_auto:
         nouvel_etat = st.toggle(
             "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_mobile_btn_v3",
+            key="toggle_auto_adaptive",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
