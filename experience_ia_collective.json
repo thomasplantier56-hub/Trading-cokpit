@@ -1,14 +1,14 @@
 {
-    "xp_total": 153465,
-    "niveau": "Maître Quant Suprême 🥇",
+    "xp_total": 306305,
+    "niveau": "Intelligence Artificielle d'Élite 👑",
     "scores_paires": {
-        "SOL": 1.05,
-        "BTC": 0.97,
-        "ETH": 0.93,
-        "XRP": 1.17,
-        "ZEC": 0.74,
-        "PIPPIN": 1.1,
-        "BNB": 0.69
+        "SOL": 1.1,
+        "BTC": 1.02,
+        "ETH": 0.98,
+        "XRP": 1.22,
+        "ZEC": 0.69,
+        "PIPPIN": 1.2,
+        "BNB": 0.79
     },
     "cooldowns": {
         "SMC": 1787956637.4762328,
@@ -21,13 +21,13 @@
         "Tendance": 3
     },
     "lecons_apprises": [
+        "🏆 [2026-08-29 14:58] Entraînement PC terminé : 4785 trades simulés, +152840 XP engrangés !",
         "✅ [14:24:38] Gain Live MEXC sur BNB : +1.28 USDT.",
         "❌ [14:18:56] Perte Live MEXC sur BNB : -0.45 USDT.",
         "✅ [14:15:37] Gain Live MEXC sur ZEC : +1.23 USDT.",
         "✅ [14:14:56] Gain Live MEXC sur ETH : +0.25 USDT.",
         "❌ [14:06:37] Perte Live MEXC sur ETH : -0.09 USDT.",
         "🏆 [2026-08-29 14:02] Entraînement PC terminé : 4743 trades simulés, +152375 XP engrangés !",
-        "❌ [13:59:35] Perte Live sur ETH : -0.32 USDT.",
-        "❌ [13:56:16] Perte Live sur BTC : -1.19 USDT."
+        "❌ [13:59:35] Perte Live sur ETH : -0.32 USDT."
     ]
 }
