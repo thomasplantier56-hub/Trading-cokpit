@@ -40,7 +40,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# CSS ÉCO-BATTERIE NOIR PUR OLED + CARTE DORÉE ROYALE
 st.markdown(
     """
 <style>
@@ -92,7 +91,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
+# 👥 GESTION DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -139,7 +138,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
 
 
 # ==========================================================
-# 🧠 CERVEAU COLLECTIF DE L'IA & APPRENTISSAGE
+# 🧠 CERVEAU COLLECTIF DE L'IA
 # ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
@@ -155,7 +154,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif unifié prêt. Mode Éco Mobile activé."
+            "Cerveau collectif prêt. Mode Éco Mobile activé."
         ],
     }
 
@@ -276,7 +275,7 @@ def charger_donnees_marche_globales():
 
 
 # ==========================================================
-# 👑 DÉTECTEUR DU SETUP A+ QUOTIDIEN (5 ÉTOILES)
+# 👑 DÉTECTEUR DU SETUP A+ AVEC EXPIRATION AUTOMATIQUE
 # ==========================================================
 def detecter_setup_a_plus_du_jour(donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
@@ -286,6 +285,8 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
 
     if df_15m is None:
         return None
+
+    setups_valides = []
 
     for paire in PAIRES_RADAR:
         nom_court = paire.split("-")[0]
@@ -320,70 +321,100 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 .iloc[-1]
             )
 
-            sweep_h_recent = any(
+            # Séquence récente (sur les 2 dernières bougies = 30 min max)
+            sweep_h = any(
                 df["High"].iloc[-k] > high_s and df["Close"].iloc[-k] < high_s
-                for k in range(1, 4)
+                for k in range(1, 3)
             )
-            sweep_l_recent = any(
+            sweep_l = any(
                 df["Low"].iloc[-k] < low_s and df["Close"].iloc[-k] > low_s
-                for k in range(1, 4)
+                for k in range(1, 3)
             )
 
             fvg_bear = (df["Low"].iloc[-3] > high) and (
-                (df["Low"].iloc[-3] - high) > (atr * 0.12)
+                (df["Low"].iloc[-3] - high) > (atr * 0.15)
             )
             fvg_bull = (low > df["High"].iloc[-3]) and (
-                (low - df["High"].iloc[-3]) > (atr * 0.12)
+                (low - df["High"].iloc[-3]) > (atr * 0.15)
             )
 
-            # ⭐⭐⭐⭐⭐ ALIGNEMENT 5 ÉTOILES SHORT A+
+            # 🎯 SHORT A+ : Le cours doit être ENCORE PROCHE du prix d'entrée (pas déjà parti au TP !)
             if (
                 en_killzone
                 and prix < ema_50
-                and (sweep_h_recent or fvg_bear)
+                and (sweep_h or fvg_bear)
                 and prix < open_p
             ):
-                dist = max(high - high_s + (0.05 * atr), 0.35 * atr)
-                sl = high_s + dist
-                tp = high_s - (4.2 * dist)
-                return {
-                    "paire": f"{nom_court}/USDT",
-                    "sens": "SHORT 🔴",
-                    "entree": high_s,
-                    "sl": sl,
-                    "tp": tp,
-                    "levier": 50,
-                    "marge_suggeree": 50.0,
-                    "gain_vise": round((4.2 * dist / high_s) * (50.0 * 50), 2),
-                    "perte_max": round((dist / high_s) * (50.0 * 50), 2),
-                    "motif": "5/5 ÉTOILES : Sweep 15m + FVG Majeur en Killzone",
-                }
+                entree_opt = high_s
+                dist = max(high - entree_opt + (0.05 * atr), 0.35 * atr)
+                sl = entree_opt + dist
+                tp = entree_opt - (4.2 * dist)
 
-            # ⭐⭐⭐⭐⭐ ALIGNEMENT 5 ÉTOILES LONG A+
+                # FILTRE D'EXPIRATION : Si le prix actuel a déjà dépassé le TP ou le SL, le setup expire !
+                if (
+                    prix > tp
+                    and prix < sl
+                    and abs(prix - entree_opt) / entree_opt < 0.015
+                ):
+                    setups_valides.append(
+                        {
+                            "paire": f"{nom_court}/USDT",
+                            "sens": "SHORT 🔴",
+                            "entree": entree_opt,
+                            "sl": sl,
+                            "tp": tp,
+                            "levier": 50,
+                            "marge_suggeree": 50.0,
+                            "gain_vise": round(
+                                (4.2 * dist / entree_opt) * (50.0 * 50), 2
+                            ),
+                            "perte_max": round(
+                                (dist / entree_opt) * (50.0 * 50), 2
+                            ),
+                            "motif": "Sweep 15m + FVG Majeur en Killzone",
+                        }
+                    )
+
+            # 🎯 LONG A+ : Le cours doit être ENCORE PROCHE du prix d'entrée
             elif (
                 en_killzone
                 and prix > ema_50
-                and (sweep_l_recent or fvg_bull)
+                and (sweep_l or fvg_bull)
                 and prix > open_p
             ):
-                dist = max(low_s - low + (0.05 * atr), 0.35 * atr)
-                sl = low_s - dist
-                tp = low_s + (4.2 * dist)
-                return {
-                    "paire": f"{nom_court}/USDT",
-                    "sens": "LONG 🟢",
-                    "entree": low_s,
-                    "sl": sl,
-                    "tp": tp,
-                    "levier": 50,
-                    "marge_suggeree": 50.0,
-                    "gain_vise": round((4.2 * dist / low_s) * (50.0 * 50), 2),
-                    "perte_max": round((dist / low_s) * (50.0 * 50), 2),
-                    "motif": "5/5 ÉTOILES : Sweep 15m + FVG Majeur en Killzone",
-                }
+                entree_opt = low_s
+                dist = max(entree_opt - low + (0.05 * atr), 0.35 * atr)
+                sl = entree_opt - dist
+                tp = entree_opt + (4.2 * dist)
+
+                if (
+                    prix < tp
+                    and prix > sl
+                    and abs(prix - entree_opt) / entree_opt < 0.015
+                ):
+                    setups_valides.append(
+                        {
+                            "paire": f"{nom_court}/USDT",
+                            "sens": "LONG 🟢",
+                            "entree": entree_opt,
+                            "sl": sl,
+                            "tp": tp,
+                            "levier": 50,
+                            "marge_suggeree": 50.0,
+                            "gain_vise": round(
+                                (4.2 * dist / entree_opt) * (50.0 * 50), 2
+                            ),
+                            "perte_max": round(
+                                (dist / entree_opt) * (50.0 * 50), 2
+                            ),
+                            "motif": "Sweep 15m + FVG Majeur en Killzone",
+                        }
+                    )
         except Exception:
             continue
-    return None
+
+    # Renvoie le setup le plus récent ou None
+    return setups_valides[0] if setups_valides else None
 
 
 def analyser_profil(profil_court, donnees_globales):
@@ -629,7 +660,7 @@ with col_h1:
 with col_h2:
     activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
     if activer_auto and has_autorefresh:
-        st_autorefresh(interval=30 * 1000, key="loop_eco_final_prod")
+        st_autorefresh(interval=30 * 1000, key="loop_eco_final_fresh")
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -645,7 +676,7 @@ st.markdown(
 donnees_globales = charger_donnees_marche_globales()
 
 # ==========================================================
-# 👑 SECTION ROYALE DU SETUP A+ DU JOUR
+# 👑 SECTION ROYALE DU SETUP A+ (AVEC EXPIRATION DYNAMIQUE)
 # ==========================================================
 setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
 
@@ -654,14 +685,14 @@ if setup_a_plus:
         f"""
     <div class="gold-card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span class="gold-title">👑 SETUP A+ DU JOUR (5/5 ÉTOILES) : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
+            <span class="gold-title">👑 SETUP A+ DU JOUR : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
             <span style="color:#00E676; font-weight:bold; font-size:15px;">Gain Visé : +{setup_a_plus['gain_vise']} USDT (1:4.2)</span>
         </div>
         <hr style="border-color:#FFD700; margin:6px 0;">
         🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
         🚀 <b>Take-Profit Royal (Ratio 1:4.2) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
         💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT<br>
-        <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']}</i></small>
+        <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']} — Entrée encore disponible !</i></small>
     </div>
     """,
         unsafe_allow_html=True,
@@ -670,7 +701,7 @@ else:
     st.markdown(
         """
     <div class="gold-card-empty">
-        👑 <b>SETUP A+ DU JOUR :</b> ⚪ Aucun alignement 5 étoiles pour le moment. L'IA surveille les plus hauts/bas majeurs et le volume en Killzone.
+        👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. Le Setup A+ précédent est terminé. L'IA surveille le prochain alignement 5 étoiles !
     </div>
     """,
         unsafe_allow_html=True,
@@ -1054,7 +1085,7 @@ with col_u:
 # ==========================================================
 tab_auto, tab_radar, tab_ia, tab_classement, tab_calc = st.tabs(
     [
-        f"🤖 Mon Auto-Trader ({trader_courant})",
+        f"🤖 Auto ({trader_courant})",
         f"⚡ Radar ({profil_cle})",
         "🧠 Cerveau IA",
         "🏆 Classement",
@@ -1068,7 +1099,6 @@ with tab_auto:
     pnl_auto = compte_actif["solde"] - compte_actif["capital_initial"]
 
     with col_t1:
-        st.subheader(f"💼 Portefeuille de {trader_courant}")
         st.markdown(
             f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
             unsafe_allow_html=True,
@@ -1078,7 +1108,7 @@ with tab_auto:
         nouvel_etat = st.toggle(
             "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_prod_final",
+            key="toggle_auto_mobile_btn_v3",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
@@ -1173,7 +1203,7 @@ with tab_radar:
                 "Paire": paire,
                 "Prix Actuel": formater_prix(d["Prix"]),
                 "Statut": statut,
-                "Range Structure": d.get("Range_Str", "N/A"),
+                "Range Structure": d["Range_Str"],
                 "RSI": d["RSI"],
             }
         )
