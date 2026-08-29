@@ -24,6 +24,14 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
     return datetime.datetime.now(TZ_PARIS).strftime(format_str)
 
 
+# Auto-Refresh
+try:
+    from streamlit_autorefresh import st_autorefresh
+
+    has_autorefresh = True
+except ImportError:
+    has_autorefresh = False
+
 # Configuration Streamlit Mobile First & Dark Mode
 st.set_page_config(
     page_title="Cockpit Trader Pro Live",
@@ -84,7 +92,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX DIRECT (SANS AUCUN BLOCAGE)
+# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES (0 BLOCAGE)
 # ==========================================================
 def obtenir_prix_live_multi_sources():
     prix_dict = {}
@@ -122,7 +130,7 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
+# 👥 GESTION DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -185,7 +193,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif prêt. Flux live sans latence actif."
+            "Cerveau collectif prêt. Ancrage 15m ➔ MSS 1m actif."
         ],
     }
 
@@ -289,7 +297,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -308,13 +316,14 @@ def charger_donnees_marche_globales():
     return donnees
 
 
+# ==========================================================
+# 👑 DÉTECTION DU VRAI SETUP A+ ROYAL (AMPLITUDE 15M)
+# ==========================================================
 def detecter_setup_a_plus_du_jour(donnees_globales):
-    maintenant = datetime.datetime.now(datetime.timezone.utc)
-    heure_utc = maintenant.hour
-    en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
     df_15m = donnees_globales.get("15m")
+    df_1m = donnees_globales.get("1m")
 
-    if df_15m is None:
+    if df_15m is None or df_1m is None:
         return None
 
     setups_valides = []
@@ -322,29 +331,34 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
     for paire in PAIRES_RADAR:
         nom_court = paire.split("-")[0]
         try:
-            df = (
+            df_15 = (
                 df_15m[paire].dropna()
                 if len(PAIRES_RADAR) > 1
                 else df_15m.dropna()
             )
-            if len(df) < 35:
+            df_1 = (
+                df_1m[paire].dropna()
+                if len(PAIRES_RADAR) > 1
+                else df_1m.dropna()
+            )
+
+            if len(df_15) < 30 or len(df_1) < 20:
                 continue
 
-            prix = float(df["Close"].iloc[-1])
-            open_p = float(df["Open"].iloc[-1])
-            high = float(df["High"].iloc[-1])
-            low = float(df["Low"].iloc[-1])
+            prix = float(df_1["Close"].iloc[-1])
+            high_15 = float(df_15["High"].iloc[-1])
+            low_15 = float(df_15["Low"].iloc[-1])
 
-            df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
-            ema_50 = float(df["EMA_50"].iloc[-1])
+            df_15["EMA_50"] = df_15["Close"].ewm(span=50, adjust=False).mean()
+            ema_50 = float(df_15["EMA_50"].iloc[-1])
 
-            high_s = float(df["High"].iloc[-17:-1].max())
-            low_s = float(df["Low"].iloc[-17:-1].min())
+            high_s = float(df_15["High"].iloc[-17:-1].max())
+            low_s = float(df_15["Low"].iloc[-17:-1].min())
 
-            hl = df["High"] - df["Low"]
-            hc = (df["High"] - df["Close"].shift()).abs()
-            lc = (df["Low"] - df["Close"].shift()).abs()
-            atr = float(
+            hl = df_15["High"] - df_15["Low"]
+            hc = (df_15["High"] - df_15["Close"].shift()).abs()
+            lc = (df_15["Low"] - df_15["Close"].shift()).abs()
+            atr_15 = float(
                 pd.concat([hl, hc, lc], axis=1)
                 .max(axis=1)
                 .rolling(14)
@@ -353,29 +367,25 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
             )
 
             sweep_h = any(
-                df["High"].iloc[-k] > high_s and df["Close"].iloc[-k] < high_s
+                df_15["High"].iloc[-k] > high_s and df_15["Close"].iloc[-k] < high_s
                 for k in range(1, 3)
             )
             sweep_l = any(
-                df["Low"].iloc[-k] < low_s and df["Close"].iloc[-k] > low_s
+                df_15["Low"].iloc[-k] < low_s and df_15["Close"].iloc[-k] > low_s
                 for k in range(1, 3)
             )
 
-            fvg_bear = (df["Low"].iloc[-3] > high) and (
-                (df["Low"].iloc[-3] - high) > (atr * 0.15)
+            fvg_bear = (df_15["Low"].iloc[-3] > high_15) and (
+                (df_15["Low"].iloc[-3] - high_15) > (atr_15 * 0.15)
             )
-            fvg_bull = (low > df["High"].iloc[-3]) and (
-                (low - df["High"].iloc[-3]) > (atr * 0.15)
+            fvg_bull = (low_15 > df_15["High"].iloc[-3]) and (
+                (low_15 - df_15["High"].iloc[-3]) > (atr_15 * 0.15)
             )
 
-            if (
-                en_killzone
-                and prix < ema_50
-                and (sweep_h or fvg_bear)
-                and prix < open_p
-            ):
+            # Short A+ Royal
+            if (sweep_h or fvg_bear) and (prix < ema_50):
                 entree_opt = high_s
-                dist = max(high - entree_opt + (0.05 * atr), 0.35 * atr)
+                dist = max(high_15 - entree_opt + (0.05 * atr_15), 0.35 * atr_15)
                 sl = entree_opt + dist
                 tp = entree_opt - (4.2 * dist)
 
@@ -399,18 +409,14 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                             "perte_max": round(
                                 (dist / entree_opt) * (50.0 * 50), 2
                             ),
-                            "motif": "Sweep 15m + FVG Majeur en Killzone",
+                            "motif": "Sweep Majeur 15m + FVG (Amplitude 4h)",
                         }
                     )
 
-            elif (
-                en_killzone
-                and prix > ema_50
-                and (sweep_l or fvg_bull)
-                and prix > open_p
-            ):
+            # Long A+ Royal
+            elif (sweep_l or fvg_bull) and (prix > ema_50):
                 entree_opt = low_s
-                dist = max(entree_opt - low + (0.05 * atr), 0.35 * atr)
+                dist = max(entree_opt - low_15 + (0.05 * atr_15), 0.35 * atr_15)
                 sl = entree_opt - dist
                 tp = entree_opt + (4.2 * dist)
 
@@ -434,7 +440,7 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                             "perte_max": round(
                                 (dist / entree_opt) * (50.0 * 50), 2
                             ),
-                            "motif": "Sweep 15m + FVG Majeur en Killzone",
+                            "motif": "Sweep Majeur 15m + FVG (Amplitude 4h)",
                         }
                     )
         except Exception:
@@ -443,6 +449,9 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
     return setups_valides[0] if setups_valides else None
 
 
+# ==========================================================
+# 🏛️ MOTEUR STRICT : ANCRAGE 15m ➔ MSS 1m ➔ RETEST FVG
+# ==========================================================
 def analyser_profil(profil_court, donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
@@ -450,60 +459,60 @@ def analyser_profil(profil_court, donnees_globales):
     ia_data = charger_experience_ia_collective()
     ts_actuel = time.time()
 
-    if profil_court == "Conservateur":
-        intervalle, lookback = "15m", 20
-        mult_sl, mult_tp1, mult_tp2 = 0.40, 1.8, 3.5
-    elif profil_court == "Intraday":
-        intervalle, lookback = "5m", 15
-        mult_sl, mult_tp1, mult_tp2 = 0.35, 1.8, 3.2
-    elif profil_court == "Scalping 1m":
-        intervalle, lookback = "1m", 10
-        mult_sl, mult_tp1, mult_tp2 = 0.30, 1.8, 3.5
-    else:
-        intervalle, lookback = "1m", 8
-        mult_sl, mult_tp1, mult_tp2 = 0.25, 1.8, 3.8
+    data_15m = donnees_globales.get("15m")
+    data_1m = donnees_globales.get("1m")
 
-    data = donnees_globales.get(intervalle)
-    if data is None:
+    if data_1m is None or data_15m is None:
         return []
 
     resultats = []
+
     for paire in PAIRES_RADAR:
         nom_court = paire.split("-")[0]
         try:
-            df = (
-                data[paire].dropna()
+            df_15 = (
+                data_15m[paire].dropna()
                 if len(PAIRES_RADAR) > 1
-                else data.dropna()
+                else data_15m.dropna()
             )
-            if len(df) < 20:
+            df_1 = (
+                data_1m[paire].dropna()
+                if len(PAIRES_RADAR) > 1
+                else data_1m.dropna()
+            )
+
+            if len(df_15) < 20 or len(df_1) < 25:
                 continue
 
-            prix = float(df["Close"].iloc[-1])
-            open_p = float(df["Open"].iloc[-1])
-            high = float(df["High"].iloc[-1])
-            low = float(df["Low"].iloc[-1])
+            prix_15 = float(df_15["Close"].iloc[-1])
+            high_s_15 = float(df_15["High"].iloc[-16:-1].max())
+            low_s_15 = float(df_15["Low"].iloc[-16:-1].min())
+            df_15["EMA_50"] = df_15["Close"].ewm(span=50, adjust=False).mean()
+            ema_50_15 = float(df_15["EMA_50"].iloc[-1])
 
-            df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
-            ema_50 = float(df["EMA_50"].iloc[-1])
-            df["EMA_9"] = df["Close"].ewm(span=9, adjust=False).mean()
-            df["EMA_21"] = df["Close"].ewm(span=21, adjust=False).mean()
-            ema_9 = float(df["EMA_9"].iloc[-1])
-            ema_21 = float(df["EMA_21"].iloc[-1])
-
-            d = df["Close"].diff()
-            g = d.where(d > 0, 0).rolling(7 if "1m" in intervalle else 14).mean()
-            l = (
-                (-d.where(d < 0, 0))
-                .rolling(7 if "1m" in intervalle else 14)
-                .mean()
+            sweep_15_h = any(
+                df_15["High"].iloc[-k] > high_s_15
+                and df_15["Close"].iloc[-k] < high_s_15
+                for k in range(1, 3)
             )
-            rsi = float((100 - (100 / (1 + (g / l)))).iloc[-1])
+            sweep_15_l = any(
+                df_15["Low"].iloc[-k] < low_s_15
+                and df_15["Close"].iloc[-k] > low_s_15
+                for k in range(1, 3)
+            )
 
-            hl = df["High"] - df["Low"]
-            hc = (df["High"] - df["Close"].shift()).abs()
-            lc = (df["Low"] - df["Close"].shift()).abs()
-            atr = float(
+            prix = float(df_1["Close"].iloc[-1])
+            open_p = float(df_1["Open"].iloc[-1])
+            high = float(df_1["High"].iloc[-1])
+            low = float(df_1["Low"].iloc[-1])
+
+            high_s_1m = float(df_1["High"].iloc[-9:-2].max())
+            low_s_1m = float(df_1["Low"].iloc[-9:-2].min())
+
+            hl = df_1["High"] - df_1["Low"]
+            hc = (df_1["High"] - df_1["Close"].shift()).abs()
+            lc = (df_1["Low"] - df_1["Close"].shift()).abs()
+            atr_1m = float(
                 pd.concat([hl, hc, lc], axis=1)
                 .max(axis=1)
                 .rolling(14)
@@ -511,23 +520,19 @@ def analyser_profil(profil_court, donnees_globales):
                 .iloc[-1]
             )
 
-            high_s = float(df["High"].iloc[-lookback:-1].max())
-            low_s = float(df["Low"].iloc[-lookback:-1].min())
-            sweep_h = any(
-                df["High"].iloc[-i] > high_s and df["Close"].iloc[-i] < high_s
-                for i in range(1, 3)
+            df_1["Vol_MA"] = df_1["Volume"].rolling(15).mean()
+            vol_fort = df_1["Volume"].iloc[-1] > (1.35 * df_1["Vol_MA"].iloc[-1])
+            gros_corps = abs(prix - open_p) > (1.0 * atr_1m)
+
+            fvg_bear_1m = (df_1["Low"].iloc[-3] > high) and (
+                (df_1["Low"].iloc[-3] - high) > (atr_1m * 0.15)
             )
-            sweep_l = any(
-                df["Low"].iloc[-i] < low_s and df["Close"].iloc[-i] > low_s
-                for i in range(1, 3)
+            fvg_bull_1m = (low > df_1["High"].iloc[-3]) and (
+                (low - df_1["High"].iloc[-3]) > (atr_1m * 0.15)
             )
 
-            fvg_bear = (df["Low"].iloc[-3] > high) and (
-                (df["Low"].iloc[-3] - high) > (atr * 0.15)
-            )
-            fvg_bull = (low > df["High"].iloc[-3]) and (
-                (low - df["High"].iloc[-3]) > (atr * 0.15)
-            )
+            mss_baissier = (prix < low_s_1m) and (prix < open_p)
+            mss_haussier = (prix > high_s_1m) and (prix > open_p)
 
             signal, opt_p, sl, tp1, tp2, motif, motif_famille = (
                 None,
@@ -541,63 +546,140 @@ def analyser_profil(profil_court, donnees_globales):
 
             if profil_court == "Conservateur":
                 motif_famille = "Tendance"
-                if prix < ema_50 and rsi >= 58 and prix < open_p:
+                if (
+                    prix < ema_50_15
+                    and sweep_15_h
+                    and mss_baissier
+                    and gros_corps
+                ):
                     signal, motif = (
                         "🔴 SHORT",
-                        "Tendance 15m",
+                        "MSS 15m + Sweep Majeur",
                     )
-                elif prix > ema_50 and rsi <= 42 and prix > open_p:
+                    opt_p = low_s_1m
+                    dist = max(high - opt_p + (0.05 * atr_1m), 0.40 * atr_1m)
+                    sl = opt_p + dist
+                    tp1 = opt_p - (1.8 * dist)
+                    tp2 = opt_p - (3.5 * dist)
+                elif (
+                    prix > ema_50_15
+                    and sweep_15_l
+                    and mss_haussier
+                    and gros_corps
+                ):
                     signal, motif = (
                         "🟢 LONG",
-                        "Tendance 15m",
+                        "MSS 15m + Sweep Majeur",
                     )
+                    opt_p = high_s_1m
+                    dist = max(opt_p - low + (0.05 * atr_1m), 0.40 * atr_1m)
+                    sl = opt_p - dist
+                    tp1 = opt_p + (1.8 * dist)
+                    tp2 = opt_p + (3.5 * dist)
 
             elif profil_court == "Intraday":
                 motif_famille = "SMC"
-                if en_killzone:
-                    if (sweep_h or (prix < ema_9)) and rsi >= 60:
-                        signal, motif = "🔴 SHORT", "Killzone 5m"
-                    elif (sweep_l or (prix > ema_9)) and rsi <= 40:
-                        signal, motif = "🟢 LONG", "Killzone 5m"
+                if en_killzone and (sweep_15_h or sweep_15_l):
+                    if (
+                        sweep_15_h
+                        and mss_baissier
+                        and (fvg_bear_1m or vol_fort)
+                    ):
+                        signal, motif = "🔴 SHORT", "Killzone MSS + FVG"
+                        opt_p = low_s_1m
+                        dist = max(
+                            high - opt_p + (0.05 * atr_1m), 0.35 * atr_1m
+                        )
+                        sl = opt_p + dist
+                        tp1 = opt_p - (1.8 * dist)
+                        tp2 = opt_p - (3.2 * dist)
+                    elif (
+                        sweep_15_l
+                        and mss_haussier
+                        and (fvg_bull_1m or vol_fort)
+                    ):
+                        signal, motif = "🟢 LONG", "Killzone MSS + FVG"
+                        opt_p = high_s_1m
+                        dist = max(
+                            opt_p - low + (0.05 * atr_1m), 0.35 * atr_1m
+                        )
+                        sl = opt_p - dist
+                        tp1 = opt_p + (1.8 * dist)
+                        tp2 = opt_p + (3.2 * dist)
 
             elif profil_court == "Scalping 1m":
                 motif_famille = "Momentum"
-                if atr >= 0.08:
-                    if (ema_9 < ema_21) and (fvg_bear or rsi >= 60) and (prix < open_p):
-                        signal, motif = "🔴 SHORT", "Momentum 1m"
-                    elif (
-                        (ema_9 > ema_21)
-                        and (fvg_bull or rsi <= 40)
-                        and (prix > open_p)
+                if atr_1m >= 0.08 and vol_fort:
+                    if (
+                        (prix < ema_50_15)
+                        and mss_baissier
+                        and (fvg_bear_1m or gros_corps)
                     ):
-                        signal, motif = "🟢 LONG", "Momentum 1m"
+                        signal, motif = (
+                            "🔴 SHORT",
+                            "MSS 1m + Momentum",
+                        )
+                        opt_p = prix
+                        dist = max(
+                            high - prix + (0.04 * atr_1m), 0.30 * atr_1m
+                        )
+                        sl = prix + dist
+                        tp1 = prix - (1.8 * dist)
+                        tp2 = prix - (3.5 * dist)
+                    elif (
+                        (prix > ema_50_15)
+                        and mss_haussier
+                        and (fvg_bull_1m or gros_corps)
+                    ):
+                        signal, motif = (
+                            "🟢 LONG",
+                            "MSS 1m + Momentum",
+                        )
+                        opt_p = prix
+                        dist = max(prix - low + (0.04 * atr_1m), 0.30 * atr_1m)
+                        sl = prix - dist
+                        tp1 = prix + (1.8 * dist)
+                        tp2 = prix + (3.5 * dist)
 
             else:  # Ultra-Scalp
                 motif_famille = "SMC"
-                if atr >= 0.08:
-                    if (sweep_h or fvg_bear) and (prix < open_p or rsi >= 58):
-                        signal, motif = "🔴 SHORT", "Ultra-SMC 1m"
-                    elif (sweep_l or fvg_bull) and (prix > open_p or rsi <= 42):
-                        signal, motif = "🟢 LONG", "Ultra-SMC 1m"
+                if atr_1m >= 0.08:
+                    if (
+                        (sweep_15_h or prix < ema_50_15)
+                        and mss_baissier
+                        and fvg_bear_1m
+                    ):
+                        signal, motif = (
+                            "🔴 SHORT",
+                            "Ancrage 15m ➔ FVG 1m",
+                        )
+                        opt_p = float(df_1["Low"].iloc[-3])
+                        dist = max(
+                            high - opt_p + (0.04 * atr_1m), 0.25 * atr_1m
+                        )
+                        sl = opt_p + dist
+                        tp1 = opt_p - (1.8 * dist)
+                        tp2 = opt_p - (3.8 * dist)
+                    elif (
+                        (sweep_15_l or prix > ema_50_15)
+                        and mss_haussier
+                        and fvg_bull_1m
+                    ):
+                        signal, motif = (
+                            "🟢 LONG",
+                            "Ancrage 15m ➔ FVG 1m",
+                        )
+                        opt_p = float(df_1["High"].iloc[-3])
+                        dist = max(opt_p - low + (0.04 * atr_1m), 0.25 * atr_1m)
+                        sl = opt_p - dist
+                        tp1 = opt_p + (1.8 * dist)
+                        tp2 = opt_p + (3.8 * dist)
 
             en_cooldown = ts_actuel < ia_data.get("cooldowns", {}).get(
                 motif_famille, 0
             )
             if signal and en_cooldown:
                 signal = None
-
-            if signal == "🔴 SHORT":
-                opt_p = high_s if sweep_h else prix
-                dist = max(high - opt_p + (0.04 * atr), mult_sl * atr)
-                sl = opt_p + dist
-                tp1 = opt_p - (mult_tp1 * dist)
-                tp2 = opt_p - (mult_tp2 * dist)
-            elif signal == "🟢 LONG":
-                opt_p = low_s if sweep_l else prix
-                dist = max(opt_p - low + (0.04 * atr), mult_sl * atr)
-                sl = opt_p - dist
-                tp1 = opt_p + (mult_tp1 * dist)
-                tp2 = opt_p + (mult_tp2 * dist)
 
             nom_paire = f"{nom_court}/USDT"
             resultats.append(
@@ -606,7 +688,7 @@ def analyser_profil(profil_court, donnees_globales):
                     "Prix": prix,
                     "High": high,
                     "Low": low,
-                    "Range_Str": f"[{formater_prix(low_s)} - {formater_prix(high_s)}]",
+                    "Range_Str": f"[{formater_prix(low_s_15)} - {formater_prix(high_s_15)}]",
                     "Signal_Detecte": signal,
                     "Motif": motif,
                     "Motif_Famille": motif_famille,
@@ -614,8 +696,7 @@ def analyser_profil(profil_court, donnees_globales):
                     "SL": sl,
                     "TP1": tp1,
                     "TP2": tp2,
-                    "RSI": f"{rsi:.1f}",
-                    "Intervalle": intervalle,
+                    "Intervalle": "1m",
                 }
             )
         except Exception:
@@ -675,7 +756,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🎛️ EN-TÊTE FIXE (NE RECHARGE JAMAIS LA PAGE !)
+# 🎛️ EN-TÊTE FIXE SANS RECHARGEMENT
 # ==========================================================
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
@@ -697,7 +778,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Curseur actif
 profil = st.select_slider(
     "Profil actif :",
     options=[
@@ -756,16 +836,15 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT DYNAMIQUE AUTO-ACTUALISÉ (SEULS LES PRIX CHANGENT !)
+# 🌟 FRAGMENT AUTO-ACTUALISÉ FLUIDE (PRIX EN DIRECT)
 # ==========================================================
-# Ce bloc tourne automatiquement toutes les 10s SANS recharger la page web
 @st.fragment(run_every="10s")
 def bloc_live_auto_actualise():
     maintenant_ts = time.time()
     prix_mexc_direct = obtenir_prix_live_multi_sources()
     donnees_globales = charger_donnees_marche_globales()
 
-    # 1. Setup A+
+    # 1. Setup A+ Royal
     setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
     if setup_a_plus:
         st.markdown(
@@ -778,7 +857,8 @@ def bloc_live_auto_actualise():
             <hr style="border-color:#FFD700; margin:6px 0;">
             🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
             🚀 <b>Take-Profit Royal (Ratio 1:4.2) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
-            💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT
+            💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT<br>
+            <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']}</i></small>
         </div>
         """,
             unsafe_allow_html=True,
@@ -789,7 +869,7 @@ def bloc_live_auto_actualise():
             unsafe_allow_html=True,
         )
 
-    # 2. Analyse et synchronisation des signaux
+    # 2. Synchronisation des profils
     donnees_tous_profils = {}
     for p_nom in LISTE_PROFILS:
         if p_nom not in st.session_state.memoire_par_profil:
@@ -821,7 +901,7 @@ def bloc_live_auto_actualise():
         for p in a_suppr:
             del mem_p[p]
 
-    # 3. Vue Panoramique 4 Styles
+    # 3. Vue Panoramique
     col_c, col_i, col_s, col_u = st.columns(4)
     with col_c:
         st.markdown(
@@ -1067,9 +1147,7 @@ def bloc_live_auto_actualise():
                                         },
                                     )
                                 else:
-                                    pnl = (
-                                        (sl - p_entree) / p_entree
-                                    ) * notionnel
+                                    pnl = ((sl - p_entree) / p_entree) * notionnel
                                     compte["solde"] += pnl
                                     mettre_a_jour_ia_collective(
                                         trader_courant,
@@ -1108,7 +1186,7 @@ def bloc_live_auto_actualise():
 
         mettre_a_jour_un_compte(trader_courant, executer_moteur)
 
-    # 5. Onglets de Contenu
+    # 5. Onglets
     tab_auto, tab_radar, tab_ia, tab_classement, tab_calc = st.tabs(
         [
             f"🤖 Auto ({trader_courant})",
@@ -1119,7 +1197,6 @@ def bloc_live_auto_actualise():
         ]
     )
 
-    # Onglet 1 : Auto-Trader
     with tab_auto:
         c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
         col_t1, col_t2 = st.columns([2, 1])
@@ -1135,7 +1212,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ ACTIVER L'AUTO",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_smooth",
+                key="toggle_auto_live_smooth_v3",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1179,7 +1256,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:5]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_smooth"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v3"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1191,7 +1268,6 @@ def bloc_live_auto_actualise():
             mettre_a_jour_un_compte(trader_courant, reset_c)
             st.rerun()
 
-    # Onglet 2 : Radar
     with tab_radar:
         memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
         if memoire_active:
@@ -1232,13 +1308,12 @@ def bloc_live_auto_actualise():
                     "Paire": paire,
                     "Prix Actuel": formater_prix(prix_reel_mexc),
                     "Statut": statut,
-                    "Range Structure": d["Range_Str"],
+                    "Range 15m": d["Range_Str"],
                     "RSI": d["RSI"],
                 }
             )
         st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
-    # Onglet 3 : Cerveau IA
     with tab_ia:
         ia_stats = charger_experience_ia_collective()
         st.markdown(
@@ -1253,7 +1328,6 @@ def bloc_live_auto_actualise():
         for lecon in ia_stats["lecons_apprises"][:4]:
             st.caption(f"• {lecon}")
 
-    # Onglet 4 : Classement
     with tab_classement:
         liste_classement = []
         comptes_live = charger_tous_les_comptes()
@@ -1278,7 +1352,6 @@ def bloc_live_auto_actualise():
             hide_index=True,
         )
 
-    # Onglet 5 : Calculateur
     with tab_calc:
         c1, c2 = st.columns(2)
         paire_sel = c1.selectbox(
@@ -1312,25 +1385,4 @@ def bloc_live_auto_actualise():
             tp1 = (
                 p_entree + (1.8 * distance)
                 if is_long
-                else p_entree - (1.8 * distance)
-            )
-            tp2 = (
-                p_entree + (3.8 * distance)
-                if is_long
-                else p_entree - (3.8 * distance)
-            )
-
-            st.markdown(
-                f"""
-            <div class="metric-card">
-                <b>Marge :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>SL :</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
-                🎯 <b>TP1 :</b> {formater_prix(tp1)} | 🚀 <b>TP2 Runner :</b> {formater_prix(tp2)}<br>
-                💀 <b>Liquidation :</b> {formater_prix(p_liq)}
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-
-
-# Lancement du bloc dynamique
-bloc_live_auto_actualise()
+                else p
