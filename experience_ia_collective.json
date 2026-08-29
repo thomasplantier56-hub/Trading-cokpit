@@ -1,33 +1,32 @@
 {
-    "xp_total": 306305,
-    "niveau": "Intelligence Artificielle d'Élite 👑",
+    "xp_total": 1545,
+    "niveau": "Maître Quant Multi-Paires MEXC 🥇",
     "scores_paires": {
-        "SOL": 1.1,
-        "BTC": 1.02,
-        "ETH": 0.98,
-        "XRP": 1.22,
-        "ZEC": 0.69,
-        "PIPPIN": 1.2,
-        "BNB": 0.79
+        "SOL": 1.35,
+        "BTC": 0.9,
+        "ETH": 0.9,
+        "XRP": 1.35,
+        "ZEC": 1.35,
+        "BNB": 1.15,
+        "PIPPIN": 1.35
     },
     "cooldowns": {
-        "SMC": 1787956637.4762328,
-        "Momentum": 1787957159.1486223,
-        "Tendance": 1787956774.7778206
+        "SMC": 0,
+        "Momentum": 0,
+        "Tendance": 0
     },
     "pertes_consecutives": {
-        "SMC": 2,
-        "Momentum": 3,
-        "Tendance": 3
+        "SMC": 0,
+        "Momentum": 0,
+        "Tendance": 0
     },
     "lecons_apprises": [
-        "🏆 [2026-08-29 14:58] Entraînement PC terminé : 4785 trades simulés, +152840 XP engrangés !",
-        "✅ [14:24:38] Gain Live MEXC sur BNB : +1.28 USDT.",
-        "❌ [14:18:56] Perte Live MEXC sur BNB : -0.45 USDT.",
-        "✅ [14:15:37] Gain Live MEXC sur ZEC : +1.23 USDT.",
-        "✅ [14:14:56] Gain Live MEXC sur ETH : +0.25 USDT.",
-        "❌ [14:06:37] Perte Live MEXC sur ETH : -0.09 USDT.",
-        "🏆 [2026-08-29 14:02] Entraînement PC terminé : 4743 trades simulés, +152375 XP engrangés !",
-        "❌ [13:59:35] Perte Live sur ETH : -0.32 USDT."
+        "🧠 SOL MEXC 15m➔1m : PF 13.61 | Winrate 100.0% (🟢 Haute rentabilité).",
+        "🧠 BTC MEXC 15m➔1m : PF 0.75 | Winrate 100.0% (⚪ À surveiller).",
+        "🧠 ETH MEXC 15m➔1m : PF 0.86 | Winrate 100.0% (⚪ À surveiller).",
+        "🧠 XRP MEXC 15m➔1m : PF 17.44 | Winrate 100.0% (🟢 Haute rentabilité).",
+        "🧠 ZEC MEXC 15m➔1m : PF 50.73 | Winrate 100.0% (🟢 Haute rentabilité).",
+        "🧠 BNB MEXC 15m➔1m : PF 1.00 | Winrate 0.0% (🟢 Stable).",
+        "🧠 PIPPIN MEXC 15m➔1m : PF 31.73 | Winrate 100.0% (🟢 Haute rentabilité)."
     ]
 }
