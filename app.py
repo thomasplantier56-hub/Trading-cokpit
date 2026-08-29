@@ -32,7 +32,7 @@ try:
 except ImportError:
     has_autorefresh = False
 
-# Configuration Mobile First
+# Configuration Mobile First & Dark Mode
 st.set_page_config(
     page_title="Cockpit Trader Mobile",
     page_icon="⚡",
@@ -40,19 +40,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# CSS ÉCO-BATTERIE (Noir Pur OLED + 0 Animation GPU)
+# CSS ÉCO-BATTERIE (Noir Pur OLED + Zéro Animation GPU)
 st.markdown(
     """
 <style>
-    /* Fond Noir Pur OLED : Les pixels noirs s'éteignent sur smartphone */
     .stApp { background-color: #000000; color: #E6EDF3; }
-    
-    /* Cartes sans ombres lourdes pour soulager le processeur mobile */
     .metric-card { background-color: #0D1117; border-radius: 8px; padding: 10px; border-left: 3px solid #2962FF; margin-bottom: 6px; }
     .xp-card { background-color: #120E1E; border-radius: 8px; padding: 10px; border: 1px solid #9C27B0; margin-bottom: 8px; }
     .user-badge { background-color: #061A0E; color: #00E676; padding: 4px 8px; border-radius: 5px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; }
     
-    /* Bandeau News Éco-Batterie Statique */
     .news-box { background-color: #0D1117; border-radius: 6px; padding: 8px 12px; border: 1px solid #21262D; margin-bottom: 10px; font-size: 12px; }
     
     .tag-bull { color: #00E676; font-weight: bold; background: rgba(0,230,118,0.15); padding: 2px 6px; border-radius: 3px; }
@@ -217,7 +213,6 @@ def formater_prix(p):
         return f"{p:.2f}"
 
 
-# Cache allongé pour économiser la data et la batterie
 @st.cache_data(ttl=120)
 def charger_news_statiques():
     try:
@@ -435,6 +430,7 @@ def analyser_profil(profil_court, donnees_globales):
                     "Prix": prix,
                     "High": high,
                     "Low": low,
+                    "Range_Str": f"[{formater_prix(low_s)} - {formater_prix(high_s)}]",
                     "Signal_Detecte": signal,
                     "Motif": motif,
                     "Motif_Famille": motif_famille,
@@ -512,12 +508,10 @@ with col_h1:
         unsafe_allow_html=True,
     )
 with col_h2:
-    # Mode Éco par défaut à 30 secondes pour sauver la batterie
     activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
     if activer_auto and has_autorefresh:
-        st_autorefresh(interval=30 * 1000, key="loop_eco_mobile")
+        st_autorefresh(interval=30 * 1000, key="loop_eco_mobile_range")
 
-# Bandeau News Statique (0 % d'utilisation GPU)
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
 st.markdown(
@@ -529,7 +523,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Curseur compact
 profil = st.select_slider(
     "Profil actif :",
     options=[
@@ -822,7 +815,7 @@ if compte_actif.get("auto_actif", False):
     compte_actif = charger_tous_les_comptes().get(trader_courant, compte_actif)
 
 # ==========================================================
-# 👀 VUE PANORAMIQUE COMPACTE
+# 👀 VUE PANORAMIQUE DES 4 STYLES
 # ==========================================================
 col_c, col_i, col_s, col_u = st.columns(4)
 with col_c:
@@ -929,7 +922,7 @@ with tab_auto:
         nouvel_etat = st.toggle(
             "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_mobile",
+            key="toggle_auto_mobile_btn",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
@@ -973,7 +966,7 @@ with tab_auto:
         mettre_a_jour_un_compte(trader_courant, reset_c)
         st.rerun()
 
-# 2. RADAR
+# 2. RADAR (AVEC LA COLONNE RANGE DE STRUCTURE RÉINTÉGRÉE)
 with tab_radar:
     memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
     if memoire_active:
@@ -1010,8 +1003,9 @@ with tab_radar:
         lignes_tableau.append(
             {
                 "Paire": paire,
-                "Prix": formater_prix(d["Prix"]),
+                "Prix Actuel": formater_prix(d["Prix"]),
                 "Statut": statut,
+                "Range Structure": d["Range_Str"],  # 🌟 COLONNE RANGE RÉINTÉGRÉE !
                 "RSI": d["RSI"],
             }
         )
