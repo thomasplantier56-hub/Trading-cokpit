@@ -34,12 +34,13 @@ except ImportError:
 
 # Configuration Mobile First & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Trader Pro & Setup A+",
-    page_icon="👑",
+    page_title="Cockpit Trader Mobile",
+    page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
+# CSS ÉCO-BATTERIE NOIR PUR OLED
 st.markdown(
     """
 <style>
@@ -68,6 +69,7 @@ st.markdown(
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
     .tp-runner { color: #00E676; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #161B22; color: #00E676; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    .danger-liq { background-color: #4A0000; border-radius: 8px; padding: 10px; border: 1px solid #FF1744; color: #FFF; font-weight: bold; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -91,7 +93,26 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES TRADERS
+# ⚡ FLUX DE PRIX EN DIRECT DE MEXC (SUB-SECONDE)
+# ==========================================================
+@st.cache_data(ttl=4)
+def charger_prix_direct_mexc():
+    """Récupère les vrais prix au tick près de MEXC Futures"""
+    try:
+        url = "https://contract.mexc.com/api/v1/contract/ticker"
+        res = requests.get(url, timeout=2).json()
+        prix_dict = {}
+        if res.get("success", False):
+            for item in res.get("data", []):
+                sym = item.get("symbol", "").replace("_", "/")
+                prix_dict[sym] = float(item.get("lastPrice", 0))
+        return prix_dict
+    except Exception:
+        return {}
+
+
+# ==========================================================
+# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -154,7 +175,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif prêt. Mode Éco Mobile activé."
+            "Cerveau collectif prêt. Flux direct MEXC actif."
         ],
     }
 
@@ -255,7 +276,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=10)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -275,7 +296,7 @@ def charger_donnees_marche_globales():
 
 
 # ==========================================================
-# 👑 DÉTECTEUR DU SETUP A+ AVEC EXPIRATION AUTOMATIQUE
+# 👑 DÉTECTEUR DU SETUP A+ DU JOUR
 # ==========================================================
 def detecter_setup_a_plus_du_jour(donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
@@ -321,7 +342,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 .iloc[-1]
             )
 
-            # Séquence récente (sur les 2 dernières bougies = 30 min max)
             sweep_h = any(
                 df["High"].iloc[-k] > high_s and df["Close"].iloc[-k] < high_s
                 for k in range(1, 3)
@@ -338,7 +358,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 (low - df["High"].iloc[-3]) > (atr * 0.15)
             )
 
-            # 🎯 SHORT A+ : Le cours doit être ENCORE PROCHE du prix d'entrée (pas déjà parti au TP !)
             if (
                 en_killzone
                 and prix < ema_50
@@ -350,7 +369,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 sl = entree_opt + dist
                 tp = entree_opt - (4.2 * dist)
 
-                # FILTRE D'EXPIRATION : Si le prix actuel a déjà dépassé le TP ou le SL, le setup expire !
                 if (
                     prix > tp
                     and prix < sl
@@ -375,7 +393,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                         }
                     )
 
-            # 🎯 LONG A+ : Le cours doit être ENCORE PROCHE du prix d'entrée
             elif (
                 en_killzone
                 and prix > ema_50
@@ -413,7 +430,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
         except Exception:
             continue
 
-    # Renvoie le setup le plus récent ou None
     return setups_valides[0] if setups_valides else None
 
 
@@ -658,9 +674,26 @@ with col_h1:
         unsafe_allow_html=True,
     )
 with col_h2:
-    activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
-    if activer_auto and has_autorefresh:
-        st_autorefresh(interval=30 * 1000, key="loop_eco_final_fresh")
+    mode_refresh = st.selectbox(
+        "🔄 Actualisation",
+        ["10s (Direct MEXC)", "30s (Éco)", "60s (Ultra-Éco)", "Désactivée"],
+        index=0,
+    )
+    intervalle_sec = (
+        10
+        if "10s" in mode_refresh
+        else (30 if "30s" in mode_refresh else (60 if "60s" in mode_refresh else 0))
+    )
+
+    if intervalle_sec > 0 and has_autorefresh:
+        st_autorefresh(
+            interval=intervalle_sec * 1000, key="loop_live_mexc_ticker"
+        )
+
+# Bouton manuel pour forcer le recalcul
+if st.button("🔄 Rafraîchir les cours en direct", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -673,10 +706,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Chargement données
 donnees_globales = charger_donnees_marche_globales()
+prix_mexc_live = (
+    charger_prix_direct_mexc()
+)  # 🌟 FLUX DIRECT SUB-SECONDE DE MEXC !
 
 # ==========================================================
-# 👑 SECTION ROYALE DU SETUP A+ (AVEC EXPIRATION DYNAMIQUE)
+# 👑 SECTION DU SETUP A+ DU JOUR
 # ==========================================================
 setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
 
@@ -1108,7 +1145,7 @@ with tab_auto:
         nouvel_etat = st.toggle(
             "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_mobile_btn_v3",
+            key="toggle_auto_live_mexc",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
@@ -1164,7 +1201,7 @@ with tab_auto:
         mettre_a_jour_un_compte(trader_courant, reset_c)
         st.rerun()
 
-# 2. RADAR
+# 2. RADAR AVEC PRIX DIRECT MEXC
 with tab_radar:
     memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
     if memoire_active:
@@ -1198,10 +1235,13 @@ with tab_radar:
             if paire in memoire_active
             else "VEILLE ⚪"
         )
+        # Priorité au prix MEXC Direct s'il est disponible
+        prix_reel_mexc = prix_mexc_live.get(paire, d["Prix"])
+
         lignes_tableau.append(
             {
                 "Paire": paire,
-                "Prix Actuel": formater_prix(d["Prix"]),
+                "Prix Actuel": formater_prix(prix_reel_mexc),
                 "Statut": statut,
                 "Range Structure": d["Range_Str"],
                 "RSI": d["RSI"],
