@@ -34,13 +34,13 @@ except ImportError:
 
 # Configuration Mobile First & Dark Mode
 st.set_page_config(
-    page_title="Cockpit Trader Mobile",
-    page_icon="⚡",
+    page_title="Cockpit Trader Pro & Setup A+",
+    page_icon="👑",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
-# CSS ÉCO-BATTERIE (Noir Pur OLED)
+# CSS ÉCO-BATTERIE NOIR PUR OLED + CARTE DORÉE ROYALE
 st.markdown(
     """
 <style>
@@ -48,6 +48,10 @@ st.markdown(
     .metric-card { background-color: #0D1117; border-radius: 8px; padding: 10px; border-left: 3px solid #2962FF; margin-bottom: 6px; }
     .xp-card { background-color: #120E1E; border-radius: 8px; padding: 10px; border: 1px solid #9C27B0; margin-bottom: 8px; }
     .user-badge { background-color: #061A0E; color: #00E676; padding: 4px 8px; border-radius: 5px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; }
+    
+    .gold-card { background-color: #171203; border-radius: 8px; padding: 14px; border: 2px solid #FFD700; margin-bottom: 12px; }
+    .gold-card-empty { background-color: #0D1117; border-radius: 6px; padding: 8px 12px; border: 1px dashed #30363D; margin-bottom: 10px; font-size: 13px; color: #8B949E; }
+    .gold-title { color: #FFD700; font-size: 17px; font-weight: bold; }
     
     .news-box { background-color: #0D1117; border-radius: 6px; padding: 8px 12px; border: 1px solid #21262D; margin-bottom: 10px; font-size: 12px; }
     .tag-bull { color: #00E676; font-weight: bold; background: rgba(0,230,118,0.15); padding: 2px 6px; border-radius: 3px; }
@@ -63,6 +67,7 @@ st.markdown(
     .alert-card-long { background-color: #04140B; border-radius: 6px; padding: 10px; border-left: 4px solid #00E676; margin-bottom: 8px; }
     .alert-card-short { background-color: #170508; border-radius: 6px; padding: 10px; border-left: 4px solid #FF1744; margin-bottom: 8px; }
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
+    .tp-runner { color: #00E676; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #161B22; color: #00E676; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
 </style>
 """,
@@ -87,7 +92,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES TRADERS
+# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -134,7 +139,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
 
 
 # ==========================================================
-# 🧠 CERVEAU COLLECTIF DE L'IA
+# 🧠 CERVEAU COLLECTIF DE L'IA & APPRENTISSAGE
 # ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
@@ -150,7 +155,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif prêt. Mode Éco Mobile activé."
+            "Cerveau collectif unifié prêt. Mode Éco Mobile activé."
         ],
     }
 
@@ -268,6 +273,117 @@ def charger_donnees_marche_globales():
         except Exception:
             donnees[intervalle] = None
     return donnees
+
+
+# ==========================================================
+# 👑 DÉTECTEUR DU SETUP A+ QUOTIDIEN (5 ÉTOILES)
+# ==========================================================
+def detecter_setup_a_plus_du_jour(donnees_globales):
+    maintenant = datetime.datetime.now(datetime.timezone.utc)
+    heure_utc = maintenant.hour
+    en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
+    df_15m = donnees_globales.get("15m")
+
+    if df_15m is None:
+        return None
+
+    for paire in PAIRES_RADAR:
+        nom_court = paire.split("-")[0]
+        try:
+            df = (
+                df_15m[paire].dropna()
+                if len(PAIRES_RADAR) > 1
+                else df_15m.dropna()
+            )
+            if len(df) < 35:
+                continue
+
+            prix = float(df["Close"].iloc[-1])
+            open_p = float(df["Open"].iloc[-1])
+            high = float(df["High"].iloc[-1])
+            low = float(df["Low"].iloc[-1])
+
+            df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
+            ema_50 = float(df["EMA_50"].iloc[-1])
+
+            high_s = float(df["High"].iloc[-17:-1].max())
+            low_s = float(df["Low"].iloc[-17:-1].min())
+
+            hl = df["High"] - df["Low"]
+            hc = (df["High"] - df["Close"].shift()).abs()
+            lc = (df["Low"] - df["Close"].shift()).abs()
+            atr = float(
+                pd.concat([hl, hc, lc], axis=1)
+                .max(axis=1)
+                .rolling(14)
+                .mean()
+                .iloc[-1]
+            )
+
+            sweep_h_recent = any(
+                df["High"].iloc[-k] > high_s and df["Close"].iloc[-k] < high_s
+                for k in range(1, 4)
+            )
+            sweep_l_recent = any(
+                df["Low"].iloc[-k] < low_s and df["Close"].iloc[-k] > low_s
+                for k in range(1, 4)
+            )
+
+            fvg_bear = (df["Low"].iloc[-3] > high) and (
+                (df["Low"].iloc[-3] - high) > (atr * 0.12)
+            )
+            fvg_bull = (low > df["High"].iloc[-3]) and (
+                (low - df["High"].iloc[-3]) > (atr * 0.12)
+            )
+
+            # ⭐⭐⭐⭐⭐ ALIGNEMENT 5 ÉTOILES SHORT A+
+            if (
+                en_killzone
+                and prix < ema_50
+                and (sweep_h_recent or fvg_bear)
+                and prix < open_p
+            ):
+                dist = max(high - high_s + (0.05 * atr), 0.35 * atr)
+                sl = high_s + dist
+                tp = high_s - (4.2 * dist)
+                return {
+                    "paire": f"{nom_court}/USDT",
+                    "sens": "SHORT 🔴",
+                    "entree": high_s,
+                    "sl": sl,
+                    "tp": tp,
+                    "levier": 50,
+                    "marge_suggeree": 50.0,
+                    "gain_vise": round((4.2 * dist / high_s) * (50.0 * 50), 2),
+                    "perte_max": round((dist / high_s) * (50.0 * 50), 2),
+                    "motif": "5/5 ÉTOILES : Sweep 15m + FVG Majeur en Killzone",
+                }
+
+            # ⭐⭐⭐⭐⭐ ALIGNEMENT 5 ÉTOILES LONG A+
+            elif (
+                en_killzone
+                and prix > ema_50
+                and (sweep_l_recent or fvg_bull)
+                and prix > open_p
+            ):
+                dist = max(low_s - low + (0.05 * atr), 0.35 * atr)
+                sl = low_s - dist
+                tp = low_s + (4.2 * dist)
+                return {
+                    "paire": f"{nom_court}/USDT",
+                    "sens": "LONG 🟢",
+                    "entree": low_s,
+                    "sl": sl,
+                    "tp": tp,
+                    "levier": 50,
+                    "marge_suggeree": 50.0,
+                    "gain_vise": round((4.2 * dist / low_s) * (50.0 * 50), 2),
+                    "perte_max": round((dist / low_s) * (50.0 * 50), 2),
+                    "motif": "5/5 ÉTOILES : Sweep 15m + FVG Majeur en Killzone",
+                }
+        except Exception:
+            continue
+    return None
 
 
 def analyser_profil(profil_court, donnees_globales):
@@ -502,7 +618,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🔋 EN-TÊTE ÉCO-BATTERIE & NEWS STATIQUES
+# 🔋 EN-TÊTE & NEWS
 # ==========================================================
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
@@ -513,7 +629,7 @@ with col_h1:
 with col_h2:
     activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
     if activer_auto and has_autorefresh:
-        st_autorefresh(interval=30 * 1000, key="loop_eco_final_fix")
+        st_autorefresh(interval=30 * 1000, key="loop_eco_final_prod")
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -526,6 +642,41 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+donnees_globales = charger_donnees_marche_globales()
+
+# ==========================================================
+# 👑 SECTION ROYALE DU SETUP A+ DU JOUR
+# ==========================================================
+setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
+
+if setup_a_plus:
+    st.markdown(
+        f"""
+    <div class="gold-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="gold-title">👑 SETUP A+ DU JOUR (5/5 ÉTOILES) : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
+            <span style="color:#00E676; font-weight:bold; font-size:15px;">Gain Visé : +{setup_a_plus['gain_vise']} USDT (1:4.2)</span>
+        </div>
+        <hr style="border-color:#FFD700; margin:6px 0;">
+        🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
+        🚀 <b>Take-Profit Royal (Ratio 1:4.2) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
+        💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT<br>
+        <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']}</i></small>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        """
+    <div class="gold-card-empty">
+        👑 <b>SETUP A+ DU JOUR :</b> ⚪ Aucun alignement 5 étoiles pour le moment. L'IA surveille les plus hauts/bas majeurs et le volume en Killzone.
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+# Curseur actif
 profil = st.select_slider(
     "Profil actif :",
     options=[
@@ -584,7 +735,6 @@ leviers_profils = {
     "Ultra-Scalp": 150,
 }
 
-donnees_globales = charger_donnees_marche_globales()
 donnees_tous_profils = {}
 
 if "memoire_par_profil" not in st.session_state:
@@ -619,7 +769,7 @@ for p_nom in LISTE_PROFILS:
         del mem_p[p]
 
 # ==========================================================
-# 🤖 AUTO-TRADING SÉCURISÉ
+# 🤖 AUTO-TRADING POUR LE COMPTE ACTIF
 # ==========================================================
 if compte_actif.get("auto_actif", False):
 
@@ -904,7 +1054,7 @@ with col_u:
 # ==========================================================
 tab_auto, tab_radar, tab_ia, tab_classement, tab_calc = st.tabs(
     [
-        f"🤖 Auto ({trader_courant})",
+        f"🤖 Mon Auto-Trader ({trader_courant})",
         f"⚡ Radar ({profil_cle})",
         "🧠 Cerveau IA",
         "🏆 Classement",
@@ -918,6 +1068,7 @@ with tab_auto:
     pnl_auto = compte_actif["solde"] - compte_actif["capital_initial"]
 
     with col_t1:
+        st.subheader(f"💼 Portefeuille de {trader_courant}")
         st.markdown(
             f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
             unsafe_allow_html=True,
@@ -927,7 +1078,7 @@ with tab_auto:
         nouvel_etat = st.toggle(
             "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_mobile_btn",
+            key="toggle_auto_prod_final",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
@@ -937,10 +1088,9 @@ with tab_auto:
             mettre_a_jour_un_compte(trader_courant, toggle_etat)
             st.rerun()
 
-    if compte_actif.get("positions"):
+    if compte_actif["positions"]:
         st.markdown("#### 🚀 Positions Ouvertes :")
         for cle, pos in list(compte_actif["positions"].items()):
-            # Blindage défensif
             strat_nom = pos.get("strategie", "Auto")
             paire_nom = cle.split("_")[1] if "_" in cle else cle
             sens_nom = pos.get("sens", "LONG")
@@ -966,7 +1116,7 @@ with tab_auto:
     else:
         st.caption("👀 Aucune position ouverte.")
 
-    if compte_actif.get("historique"):
+    if compte_actif["historique"]:
         st.markdown("#### 📜 Derniers Trades Clôturés :")
         st.dataframe(
             pd.DataFrame(compte_actif["historique"][:5]), hide_index=True
@@ -1021,9 +1171,9 @@ with tab_radar:
         lignes_tableau.append(
             {
                 "Paire": paire,
-                "Prix": formater_prix(d["Prix"]),
+                "Prix Actuel": formater_prix(d["Prix"]),
                 "Statut": statut,
-                "Range Structure": d["Range_Str"],
+                "Range Structure": d.get("Range_Str", "N/A"),
                 "RSI": d["RSI"],
             }
         )
