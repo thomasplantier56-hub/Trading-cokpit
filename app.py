@@ -92,7 +92,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES (0 BLOCAGE)
+# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES
 # ==========================================================
 def obtenir_prix_live_multi_sources():
     prix_dict = {}
@@ -130,7 +130,7 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES TRADERS
+# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -339,7 +339,7 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
             df_1 = (
                 df_1m[paire].dropna()
                 if len(PAIRES_RADAR) > 1
-                else df_1m.dropna()
+                else data_1m.dropna()
             )
 
             if len(df_15) < 30 or len(df_1) < 20:
@@ -382,7 +382,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 (low_15 - df_15["High"].iloc[-3]) > (atr_15 * 0.15)
             )
 
-            # Short A+ Royal
             if (sweep_h or fvg_bear) and (prix < ema_50):
                 entree_opt = high_s
                 dist = max(high_15 - entree_opt + (0.05 * atr_15), 0.35 * atr_15)
@@ -413,7 +412,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                         }
                     )
 
-            # Long A+ Royal
             elif (sweep_l or fvg_bull) and (prix > ema_50):
                 entree_opt = low_s
                 dist = max(entree_opt - low_15 + (0.05 * atr_15), 0.35 * atr_15)
@@ -641,7 +639,7 @@ def analyser_profil(profil_court, donnees_globales):
                         tp1 = prix + (1.8 * dist)
                         tp2 = prix + (3.5 * dist)
 
-            else:  # Ultra-Scalp
+            else:
                 motif_famille = "SMC"
                 if atr_1m >= 0.08:
                     if (
@@ -1212,7 +1210,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ ACTIVER L'AUTO",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_smooth_v3",
+                key="toggle_auto_live_smooth_v4",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1256,7 +1254,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:5]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v3"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v4"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1385,4 +1383,25 @@ def bloc_live_auto_actualise():
             tp1 = (
                 p_entree + (1.8 * distance)
                 if is_long
-                else p
+                else p_entree - (1.8 * distance)
+            )
+            tp2 = (
+                p_entree + (3.8 * distance)
+                if is_long
+                else p_entree - (3.8 * distance)
+            )
+
+            st.markdown(
+                f"""
+            <div class="metric-card">
+                <b>Marge :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>SL :</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
+                🎯 <b>TP1 :</b> {formater_prix(tp1)} | 🚀 <b>TP2 Runner :</b> {formater_prix(tp2)}<br>
+                💀 <b>Liquidation :</b> {formater_prix(p_liq)}
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+
+# Lancement du fragment fluide
+bloc_live_auto_actualise()
