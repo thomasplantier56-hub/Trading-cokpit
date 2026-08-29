@@ -24,15 +24,7 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
     return datetime.datetime.now(TZ_PARIS).strftime(format_str)
 
 
-# Auto-Refresh
-try:
-    from streamlit_autorefresh import st_autorefresh
-
-    has_autorefresh = True
-except ImportError:
-    has_autorefresh = False
-
-# Configuration Mobile First & Dark Mode
+# Configuration Streamlit Mobile First & Dark Mode
 st.set_page_config(
     page_title="Cockpit Trader Pro Live",
     page_icon="⚡",
@@ -40,7 +32,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# CSS NOIR PUR OLED
 st.markdown(
     """
 <style>
@@ -93,9 +84,10 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ TRIPLE FLUX DE PRIX DIRECT (SANS CACHE & SANS LATENCE)
+# ⚡ FLUX DE PRIX DIRECT (SANS AUCUN BLOCAGE)
 # ==========================================================
-def obtenir_prix_live_mexc_garanti():
+def obtenir_prix_live_multi_sources():
+    prix_dict = {}
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -103,28 +95,22 @@ def obtenir_prix_live_mexc_garanti():
         ),
         "Accept": "application/json",
     }
-    prix_dict = {}
-
-    # 1. MEXC Futures Public Ticker API
     try:
-        url = "https://contract.mexc.com/api/v1/contract/ticker"
-        res = requests.get(url, headers=headers, timeout=1.8).json()
-        if res.get("success", False) or "data" in res:
-            for item in res.get("data", []):
-                sym = item.get("symbol", "").replace("_", "/")
-                if item.get("lastPrice"):
-                    prix_dict[sym] = float(item.get("lastPrice"))
+        url_mexc = "https://api.mexc.com/api/v3/ticker/price"
+        res = requests.get(url_mexc, headers=headers, timeout=1.5).json()
+        for it in res:
+            s_name = it.get("symbol", "")
+            for base in ["SOL", "BTC", "ETH", "XRP", "ZEC", "PIPPIN", "BNB"]:
+                if s_name == f"{base}USDT":
+                    prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
     except Exception:
         pass
 
-    # 2. Binance Futures Ticker (Relais de secours)
     if not prix_dict or "SOL/USDT" not in prix_dict:
         try:
-            url_binance = "https://fapi.binance.com/fapi/v1/ticker/price"
-            res2 = requests.get(
-                url_binance, headers=headers, timeout=1.8
-            ).json()
-            for it in res2:
+            url_binance = "https://api.binance.com/api/v3/ticker/price"
+            res3 = requests.get(url_binance, headers=headers, timeout=1.5).json()
+            for it in res3:
                 s_name = it.get("symbol", "")
                 for base in ["SOL", "BTC", "ETH", "XRP", "ZEC", "BNB"]:
                     if s_name == f"{base}USDT":
@@ -221,7 +207,7 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
     elif xp < 500:
         ia["niveau"] = "Collectif Initié 🥉"
     elif xp < 1200:
-        ia["niveau"] = "Quant Confirmé 🥈"
+        ia["niveau"] = "Hedge Fund IA Confirmé 🥈"
     else:
         ia["niveau"] = "Maître Quant Suprême 🥇"
 
@@ -275,12 +261,15 @@ def charger_news_statiques():
         for entry in flux.entries[:3]:
             titre = entry.title
             compound = analyzer.polarity_scores(titre)["compound"]
-            if compound >= 0.15:
-                tag = '<span class="tag-bull">BULLISH</span>'
-            elif compound <= -0.15:
-                tag = '<span class="tag-bear">BEARISH</span>'
-            else:
-                tag = '<span class="tag-neu">NEUTRE</span>'
+            tag = (
+                '<span class="tag-bull">BULLISH</span>'
+                if compound >= 0.15
+                else (
+                    '<span class="tag-bear">BEARISH</span>'
+                    if compound <= -0.15
+                    else '<span class="tag-neu">NEUTRE</span>'
+                )
+            )
             items.append(f"{tag} {titre[:55]}...")
         return items
     except Exception:
@@ -300,8 +289,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-# Cache court de 5 secondes pour la structure
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -320,9 +308,6 @@ def charger_donnees_marche_globales():
     return donnees
 
 
-# ==========================================================
-# 👑 DÉTECTEUR DU SETUP A+ DU JOUR
-# ==========================================================
 def detecter_setup_a_plus_du_jour(donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
@@ -690,35 +675,16 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🔋 EN-TÊTE & AUTO-REFRESH 10S
+# 🎛️ EN-TÊTE FIXE (NE RECHARGE JAMAIS LA PAGE !)
 # ==========================================================
-col_h1, col_h2 = st.columns([2, 1])
+col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.markdown(
         f"### ⚡ Cockpit Pro <span class='user-badge'>👤 {trader_courant}</span>",
         unsafe_allow_html=True,
     )
 with col_h2:
-    mode_refresh = st.selectbox(
-        "🔄 Actualisation",
-        ["10s (Direct MEXC)", "30s (Éco)", "60s (Ultra-Éco)", "Désactivée"],
-        index=0,
-    )
-    intervalle_sec = (
-        10
-        if "10s" in mode_refresh
-        else (30 if "30s" in mode_refresh else (60 if "60s" in mode_refresh else 0))
-    )
-
-    if intervalle_sec > 0 and has_autorefresh:
-        st_autorefresh(
-            interval=intervalle_sec * 1000, key="loop_final_pure_live_feed"
-        )
-
-# Bouton manuel
-if st.button("🔄 Rafraîchir les cours en direct", use_container_width=True):
-    st.cache_data.clear()
-    st.rerun()
+    st.caption(f"🕒 Heure de Paris : **{obtenir_date_heure_paris()}**")
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -730,44 +696,6 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
-# Chargement données & Prix live directs
-donnees_globales = charger_donnees_marche_globales()
-prix_mexc_direct = (
-    obtenir_prix_live_mexc_garanti()
-)  # 🌟 SANS CACHE, AU TICK PRÈS !
-
-# ==========================================================
-# 👑 SECTION DU SETUP A+ DU JOUR
-# ==========================================================
-setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
-
-if setup_a_plus:
-    st.markdown(
-        f"""
-    <div class="gold-card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span class="gold-title">👑 SETUP A+ DU JOUR : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
-            <span style="color:#00E676; font-weight:bold; font-size:15px;">Gain Visé : +{setup_a_plus['gain_vise']} USDT (1:4.2)</span>
-        </div>
-        <hr style="border-color:#FFD700; margin:6px 0;">
-        🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
-        🚀 <b>Take-Profit Royal (Ratio 1:4.2) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
-        💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT<br>
-        <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']} — Entrée encore disponible !</i></small>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown(
-        """
-    <div class="gold-card-empty">
-        👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. Le Setup A+ précédent est terminé. L'IA surveille le prochain alignement 5 étoiles !
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
 
 # Curseur actif
 profil = st.select_slider(
@@ -810,11 +738,6 @@ else:
         "1m",
     )
 
-maintenant_ts = time.time()
-
-# ==========================================================
-# 🧠 SYNCHRONISATION MULTI-PROFILS
-# ==========================================================
 durees_profils = {
     "Conservateur": 600,
     "Intraday": 300,
@@ -828,541 +751,586 @@ leviers_profils = {
     "Ultra-Scalp": 150,
 }
 
-donnees_tous_profils = {}
-
 if "memoire_par_profil" not in st.session_state:
     st.session_state.memoire_par_profil = {p: {} for p in LISTE_PROFILS}
 
-for p_nom in LISTE_PROFILS:
-    if p_nom not in st.session_state.memoire_par_profil:
-        st.session_state.memoire_par_profil[p_nom] = {}
-
-    donnees_p = analyser_profil(p_nom, donnees_globales)
-    donnees_tous_profils[p_nom] = donnees_p
-
-    for d in donnees_p:
-        paire = d["Paire"]
-        if d["Signal_Detecte"] is not None:
-            st.session_state.memoire_par_profil[p_nom][paire] = {
-                "signal": d["Signal_Detecte"],
-                "motif": d["Motif"],
-                "prix_entree": d["Opt_Price"],
-                "sl": d["SL"],
-                "tp1": d["TP1"],
-                "tp2": d["TP2"],
-                "timestamp": maintenant_ts,
-            }
-
-    exp = durees_profils.get(p_nom, 120)
-    mem_p = st.session_state.memoire_par_profil[p_nom]
-    a_suppr = [
-        p for p, info in mem_p.items() if maintenant_ts - info["timestamp"] > exp
-    ]
-    for p in a_suppr:
-        del mem_p[p]
 
 # ==========================================================
-# 🤖 AUTO-TRADING POUR LE COMPTE ACTIF
+# 🌟 FRAGMENT DYNAMIQUE AUTO-ACTUALISÉ (SEULS LES PRIX CHANGENT !)
 # ==========================================================
-if compte_actif.get("auto_actif", False):
+# Ce bloc tourne automatiquement toutes les 10s SANS recharger la page web
+@st.fragment(run_every="10s")
+def bloc_live_auto_actualise():
+    maintenant_ts = time.time()
+    prix_mexc_direct = obtenir_prix_live_multi_sources()
+    donnees_globales = charger_donnees_marche_globales()
 
-    def executer_moteur(compte):
-        heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
-        for p_nom in LISTE_PROFILS:
-            levier_strat = leviers_profils[p_nom]
-            for d in donnees_tous_profils.get(p_nom, []):
-                paire = d["Paire"]
-                cle_pos = f"{p_nom}_{paire}"
-                high = d["High"]
-                low = d["Low"]
-                motif_fam = d["Motif_Famille"]
-
-                if cle_pos in compte["positions"]:
-                    pos = compte["positions"][cle_pos]
-                    sens = pos.get("sens", "LONG")
-                    p_entree = float(pos.get("entree", d["Prix"]))
-                    sl = float(pos.get("sl", 0))
-                    tp1 = float(pos.get("tp1", 0))
-                    tp2 = float(pos.get("tp2", 0))
-                    marge_p = float(pos.get("marge", 100.0))
-                    levier_p = float(pos.get("levier", levier_strat))
-                    notionnel = marge_p * levier_p
-
-                    if "SHORT" in sens:
-                        if not pos.get("tp1_hit", False) and low <= tp1:
-                            pos["tp1_hit"] = True
-                            pnl_50 = (
-                                (p_entree - tp1) / p_entree
-                            ) * (notionnel * 0.5)
-                            compte["solde"] += pnl_50
-                            pos["sl"] = p_entree
-                        elif pos.get("tp1_hit", False) and low <= tp2:
-                            pnl_runner = (
-                                (p_entree - tp2) / p_entree
-                            ) * (notionnel * 0.5)
-                            pnl_tot = (
-                                (p_entree - tp1) / p_entree
-                            ) * (notionnel * 0.5) + pnl_runner
-                            compte["solde"] += pnl_runner
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, True, pnl_tot
-                            )
-                            compte["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl_tot, 2),
-                                    "win": True,
-                                    "date": heure_fr_trade,
-                                },
-                            )
-                            del compte["positions"][cle_pos]
-                        elif high >= sl:
-                            if pos.get("tp1_hit", False):
-                                pnl_tot = (
-                                    (p_entree - tp1) / p_entree
-                                ) * (notionnel * 0.5)
-                                mettre_a_jour_ia_collective(
-                                    trader_courant,
-                                    paire,
-                                    motif_fam,
-                                    True,
-                                    pnl_tot,
-                                )
-                                compte["historique"].insert(
-                                    0,
-                                    {
-                                        "strategie": p_nom,
-                                        "paire": paire,
-                                        "sens": sens,
-                                        "pnl": round(pnl_tot, 2),
-                                        "win": True,
-                                        "date": heure_fr_trade,
-                                    },
-                                )
-                            else:
-                                pnl = (
-                                    (p_entree - sl) / p_entree
-                                ) * notionnel
-                                compte["solde"] += pnl
-                                mettre_a_jour_ia_collective(
-                                    trader_courant,
-                                    paire,
-                                    motif_fam,
-                                    False,
-                                    pnl,
-                                )
-                                compte["historique"].insert(
-                                    0,
-                                    {
-                                        "strategie": p_nom,
-                                        "paire": paire,
-                                        "sens": sens,
-                                        "pnl": round(pnl, 2),
-                                        "win": False,
-                                        "date": heure_fr_trade,
-                                    },
-                                )
-                            del compte["positions"][cle_pos]
-
-                    elif "LONG" in sens:
-                        if not pos.get("tp1_hit", False) and high >= tp1:
-                            pos["tp1_hit"] = True
-                            pnl_50 = (
-                                (tp1 - p_entree) / p_entree
-                            ) * (notionnel * 0.5)
-                            compte["solde"] += pnl_50
-                            pos["sl"] = p_entree
-                        elif pos.get("tp1_hit", False) and high >= tp2:
-                            pnl_runner = (
-                                (tp2 - p_entree) / p_entree
-                            ) * (notionnel * 0.5)
-                            pnl_tot = (
-                                (tp1 - p_entree) / p_entree
-                            ) * (notionnel * 0.5) + pnl_runner
-                            compte["solde"] += pnl_runner
-                            mettre_a_jour_ia_collective(
-                                trader_courant, paire, motif_fam, True, pnl_tot
-                            )
-                            compte["historique"].insert(
-                                0,
-                                {
-                                    "strategie": p_nom,
-                                    "paire": paire,
-                                    "sens": sens,
-                                    "pnl": round(pnl_tot, 2),
-                                    "win": True,
-                                    "date": heure_fr_trade,
-                                },
-                            )
-                            del compte["positions"][cle_pos]
-                        elif low <= sl:
-                            if pos.get("tp1_hit", False):
-                                pnl_tot = (
-                                    (tp1 - p_entree) / p_entree
-                                ) * (notionnel * 0.5)
-                                mettre_a_jour_ia_collective(
-                                    trader_courant,
-                                    paire,
-                                    motif_fam,
-                                    True,
-                                    pnl_tot,
-                                )
-                                compte["historique"].insert(
-                                    0,
-                                    {
-                                        "strategie": p_nom,
-                                        "paire": paire,
-                                        "sens": sens,
-                                        "pnl": round(pnl_tot, 2),
-                                        "win": True,
-                                        "date": heure_fr_trade,
-                                    },
-                                )
-                            else:
-                                pnl = ((sl - p_entree) / p_entree) * notionnel
-                                compte["solde"] += pnl
-                                mettre_a_jour_ia_collective(
-                                    trader_courant,
-                                    paire,
-                                    motif_fam,
-                                    False,
-                                    pnl,
-                                )
-                                compte["historique"].insert(
-                                    0,
-                                    {
-                                        "strategie": p_nom,
-                                        "paire": paire,
-                                        "sens": sens,
-                                        "pnl": round(pnl, 2),
-                                        "win": False,
-                                        "date": heure_fr_trade,
-                                    },
-                                )
-                            del compte["positions"][cle_pos]
-
-                elif len(compte["positions"]) < 4 and d["Signal_Detecte"]:
-                    compte["positions"][cle_pos] = {
-                        "strategie": p_nom,
-                        "sens": d["Signal_Detecte"],
-                        "motif": d["Motif"],
-                        "entree": d["Opt_Price"],
-                        "sl": d["SL"],
-                        "tp1": d["TP1"],
-                        "tp2": d["TP2"],
-                        "marge": 100.0,
-                        "levier": levier_strat,
-                        "tp1_hit": False,
-                        "date_open": heure_fr_trade,
-                    }
-
-    mettre_a_jour_un_compte(trader_courant, executer_moteur)
-    compte_actif = charger_tous_les_comptes().get(trader_courant, compte_actif)
-
-# ==========================================================
-# 👀 VUE PANORAMIQUE DES 4 STYLES
-# ==========================================================
-col_c, col_i, col_s, col_u = st.columns(4)
-with col_c:
-    st.markdown(
-        """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><br>""",
-        unsafe_allow_html=True,
-    )
-    sigs_c = st.session_state.memoire_par_profil.get("Conservateur", {})
-    if sigs_c:
-        for p, info in sigs_c.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#6E7681;'>⚪ En veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col_i:
-    st.markdown(
-        """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><br>""",
-        unsafe_allow_html=True,
-    )
-    sigs_i = st.session_state.memoire_par_profil.get("Intraday", {})
-    if sigs_i:
-        for p, info in sigs_i.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#6E7681;'>⚪ En veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col_s:
-    st.markdown(
-        """<div class="mini-card-scalping"><b>⚡ Scalp (1m x100)</b><br>""",
-        unsafe_allow_html=True,
-    )
-    sigs_s = st.session_state.memoire_par_profil.get("Scalping 1m", {})
-    if sigs_s:
-        for p, info in sigs_s.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#6E7681;'>⚪ En veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col_u:
-    st.markdown(
-        """<div class="mini-card-ultrascalp"><b>🔥 Ultra (1m x150)</b><br>""",
-        unsafe_allow_html=True,
-    )
-    sigs_u = st.session_state.memoire_par_profil.get("Ultra-Scalp", {})
-    if sigs_u:
-        for p, info in sigs_u.items():
-            st.markdown(
-                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            "<span style='color:#6E7681;'>⚪ En veille</span>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ==========================================================
-# 📱 ONGLETS PRINCIPAUX
-# ==========================================================
-tab_auto, tab_radar, tab_ia, tab_classement, tab_calc = st.tabs(
-    [
-        f"🤖 Auto ({trader_courant})",
-        f"⚡ Radar ({profil_cle})",
-        "🧠 Cerveau IA",
-        "🏆 Classement",
-        "🧮 Calculateur",
-    ]
-)
-
-# 1. MON AUTO-TRADER
-with tab_auto:
-    col_t1, col_t2 = st.columns([2, 1])
-    pnl_auto = compte_actif["solde"] - compte_actif["capital_initial"]
-
-    with col_t1:
-        st.markdown(
-            f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
-            unsafe_allow_html=True,
-        )
-
-    with col_t2:
-        nouvel_etat = st.toggle(
-            "⚡ ACTIVER L'AUTO",
-            value=compte_actif.get("auto_actif", False),
-            key="toggle_auto_live_final_mexc",
-        )
-        if nouvel_etat != compte_actif.get("auto_actif", False):
-
-            def toggle_etat(c):
-                c["auto_actif"] = nouvel_etat
-
-            mettre_a_jour_un_compte(trader_courant, toggle_etat)
-            st.rerun()
-
-    if compte_actif["positions"]:
-        st.markdown("#### 🚀 Positions Ouvertes :")
-        for cle, pos in list(compte_actif["positions"].items()):
-            strat_nom = pos.get("strategie", "Auto")
-            paire_nom = cle.split("_")[1] if "_" in cle else cle
-            sens_nom = pos.get("sens", "LONG")
-            levier_nom = pos.get("levier", 50)
-            entree_val = formater_prix(pos.get("entree", 0))
-            sl_val = formater_prix(pos.get("sl", 0))
-            tp1_val = formater_prix(pos.get("tp1", 0))
-            tp2_val = formater_prix(pos.get("tp2", 0))
-            tp1_statut = (
-                "✅ Breakeven" if pos.get("tp1_hit", False) else "⏳ Attente"
-            )
-
-            st.markdown(
-                f"""
-            <div class="pos-card">
-                <b>[{strat_nom}] {paire_nom} ({sens_nom} x{levier_nom})</b><br>
-                🎯 <b>Entrée :</b> {entree_val} | 🛑 <b>SL :</b> {sl_val}<br>
-                💰 <b>TP1 :</b> {tp1_val} [{tp1_statut}] | 🚀 <b>TP2 :</b> {tp2_val}
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-    else:
-        st.caption("👀 Aucune position ouverte.")
-
-    if compte_actif["historique"]:
-        st.markdown("#### 📜 Derniers Trades Clôturés :")
-        st.dataframe(
-            pd.DataFrame(compte_actif["historique"][:5]), hide_index=True
-        )
-
-    if st.button("🔄 Reset solde à 1000 USDT"):
-
-        def reset_c(c):
-            c["solde"] = 1000.0
-            c["capital_initial"] = 1000.0
-            c["auto_actif"] = False
-            c["positions"] = {}
-            c["historique"] = []
-
-        mettre_a_jour_un_compte(trader_courant, reset_c)
-        st.rerun()
-
-# 2. RADAR AVEC PRIX DIRECTS DU FLUX MEXC
-with tab_radar:
-    memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
-    if memoire_active:
-        for p, info in list(memoire_active.items()):
-            temps_restant = int(
-                durees_profils.get(profil_cle, 120)
-                - (maintenant_ts - info["timestamp"])
-            )
-            classe = (
-                "alert-card-long"
-                if "LONG" in info["signal"]
-                else "alert-card-short"
-            )
-            st.markdown(
-                f"""
-            <div class="{classe}">
-                <b>⚡ {p} : {info['signal']} ({info['motif']})</b> <span class="timer-badge">⏱️ {max(0, temps_restant)}s</span><br>
-                🎯 <span class="opt-price">Limit : {formater_prix(info['prix_entree'])} USDT</span><br>
-                🛑 SL : {formater_prix(info['sl'])} | 💰 TP1 : {formater_prix(info['tp1'])} | 🚀 TP2 : {formater_prix(info['tp2'])}
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-
-    donnees_affichees = donnees_tous_profils.get(profil_cle, [])
-    lignes_tableau = []
-    for d in donnees_affichees:
-        paire = d["Paire"]
-        statut = (
-            memoire_active[paire]["signal"]
-            if paire in memoire_active
-            else "VEILLE ⚪"
-        )
-        # Affichage du vrai prix MEXC en direct
-        prix_reel_mexc = prix_mexc_direct.get(paire, d["Prix"])
-
-        lignes_tableau.append(
-            {
-                "Paire": paire,
-                "Prix Actuel": formater_prix(prix_reel_mexc),
-                "Statut": statut,
-                "Range Structure": d["Range_Str"],
-                "RSI": d["RSI"],
-            }
-        )
-    st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
-
-# 3. CERVEAU COLLECTIF IA
-with tab_ia:
-    ia_stats = charger_experience_ia_collective()
-    st.markdown(
-        f"""
-    <div class="xp-card">
-        <b>🏆 Niveau : <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP Partagés)<br>
-        <small>Chaque trade améliore les filtres de tout le groupe.</small>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    for lecon in ia_stats["lecons_apprises"][:4]:
-        st.caption(f"• {lecon}")
-
-# 4. CLASSEMENT
-with tab_classement:
-    liste_classement = []
-    comptes_live = charger_tous_les_comptes()
-    for nom, c in comptes_live.items():
-        pnl = c["solde"] - c["capital_initial"]
-        trades_nb = len(c.get("historique", []))
-        wins = sum(1 for t in c.get("historique", []) if t.get("win", False))
-        wr = (wins / trades_nb * 100) if trades_nb > 0 else 0.0
-        liste_classement.append(
-            {
-                "Trader": f"👤 {nom}",
-                "Solde": f"{c['solde']:.1f} $",
-                "PnL": f"{pnl:+.1f} $",
-                "WR": f"{wr:.0f}%",
-                "Trades": trades_nb,
-            }
-        )
-    st.dataframe(
-        pd.DataFrame(liste_classement).sort_values(
-            by="PnL", ascending=False
-        ),
-        hide_index=True,
-    )
-
-# 5. CALCULATEUR
-with tab_calc:
-    c1, c2 = st.columns(2)
-    paire_sel = c1.selectbox(
-        "Paire", [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
-    )
-    sens_sel = c2.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
-    is_long = "LONG" in sens_sel
-
-    col_e, col_sl = st.columns(2)
-    p_entree = col_e.number_input(
-        "Entrée ($)", value=106.20, step=0.01, format="%.5f"
-    )
-    p_sl = col_sl.number_input(
-        "SL ($)", value=105.90, step=0.01, format="%.5f"
-    )
-
-    marge_fixe = st.number_input("Marge (USDT)", value=10.0, step=5.0)
-
-    if (is_long and p_sl < p_entree) or ((not is_long) and p_sl > p_entree):
-        distance = abs(p_entree - p_sl)
-        pct_dist = distance / p_entree
-        notionnel = marge_fixe * levier_suggere
-        perte_sl = pct_dist * notionnel
-
-        dist_liq_pct = (1.0 / levier_suggere) * 0.90
-        p_liq = (
-            p_entree * (1 - dist_liq_pct)
-            if is_long
-            else p_entree * (1 + dist_liq_pct)
-        )
-        tp1 = (
-            p_entree + (1.8 * distance)
-            if is_long
-            else p_entree - (1.8 * distance)
-        )
-        tp2 = (
-            p_entree + (3.8 * distance)
-            if is_long
-            else p_entree - (3.8 * distance)
-        )
-
+    # 1. Setup A+
+    setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
+    if setup_a_plus:
         st.markdown(
             f"""
-        <div class="metric-card">
-            <b>Marge :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>SL :</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
-            🎯 <b>TP1 :</b> {formater_prix(tp1)} | 🚀 <b>TP2 Runner :</b> {formater_prix(tp2)}<br>
-            💀 <b>Liquidation :</b> {formater_prix(p_liq)}
+        <div class="gold-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="gold-title">👑 SETUP A+ DU JOUR : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
+                <span style="color:#00E676; font-weight:bold; font-size:15px;">Gain Visé : +{setup_a_plus['gain_vise']} USDT (1:4.2)</span>
+            </div>
+            <hr style="border-color:#FFD700; margin:6px 0;">
+            🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
+            🚀 <b>Take-Profit Royal (Ratio 1:4.2) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
+            💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT
         </div>
         """,
             unsafe_allow_html=True,
         )
+    else:
+        st.markdown(
+            """<div class="gold-card-empty">👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. L'IA surveille le prochain alignement 5 étoiles !</div>""",
+            unsafe_allow_html=True,
+        )
+
+    # 2. Analyse et synchronisation des signaux
+    donnees_tous_profils = {}
+    for p_nom in LISTE_PROFILS:
+        if p_nom not in st.session_state.memoire_par_profil:
+            st.session_state.memoire_par_profil[p_nom] = {}
+
+        donnees_p = analyser_profil(p_nom, donnees_globales)
+        donnees_tous_profils[p_nom] = donnees_p
+
+        for d in donnees_p:
+            paire = d["Paire"]
+            if d["Signal_Detecte"] is not None:
+                st.session_state.memoire_par_profil[p_nom][paire] = {
+                    "signal": d["Signal_Detecte"],
+                    "motif": d["Motif"],
+                    "prix_entree": d["Opt_Price"],
+                    "sl": d["SL"],
+                    "tp1": d["TP1"],
+                    "tp2": d["TP2"],
+                    "timestamp": maintenant_ts,
+                }
+
+        exp = durees_profils.get(p_nom, 120)
+        mem_p = st.session_state.memoire_par_profil[p_nom]
+        a_suppr = [
+            p
+            for p, info in mem_p.items()
+            if maintenant_ts - info["timestamp"] > exp
+        ]
+        for p in a_suppr:
+            del mem_p[p]
+
+    # 3. Vue Panoramique 4 Styles
+    col_c, col_i, col_s, col_u = st.columns(4)
+    with col_c:
+        st.markdown(
+            """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><br>""",
+            unsafe_allow_html=True,
+        )
+        sigs_c = st.session_state.memoire_par_profil.get("Conservateur", {})
+        if sigs_c:
+            for p, info in sigs_c.items():
+                st.markdown(
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_i:
+        st.markdown(
+            """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><br>""",
+            unsafe_allow_html=True,
+        )
+        sigs_i = st.session_state.memoire_par_profil.get("Intraday", {})
+        if sigs_i:
+            for p, info in sigs_i.items():
+                st.markdown(
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_s:
+        st.markdown(
+            """<div class="mini-card-scalping"><b>⚡ Scalp (1m x100)</b><br>""",
+            unsafe_allow_html=True,
+        )
+        sigs_s = st.session_state.memoire_par_profil.get("Scalping 1m", {})
+        if sigs_s:
+            for p, info in sigs_s.items():
+                st.markdown(
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_u:
+        st.markdown(
+            """<div class="mini-card-ultrascalp"><b>🔥 Ultra (1m x150)</b><br>""",
+            unsafe_allow_html=True,
+        )
+        sigs_u = st.session_state.memoire_par_profil.get("Ultra-Scalp", {})
+        if sigs_u:
+            for p, info in sigs_u.items():
+                st.markdown(
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 4. Moteur Auto-Trader
+    compte_actuel = charger_tous_les_comptes().get(trader_courant, compte_actif)
+    if compte_actuel.get("auto_actif", False):
+
+        def executer_moteur(compte):
+            heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
+            for p_nom in LISTE_PROFILS:
+                levier_strat = leviers_profils[p_nom]
+                for d in donnees_tous_profils.get(p_nom, []):
+                    paire = d["Paire"]
+                    cle_pos = f"{p_nom}_{paire}"
+                    high = d["High"]
+                    low = d["Low"]
+                    motif_fam = d["Motif_Famille"]
+
+                    if cle_pos in compte["positions"]:
+                        pos = compte["positions"][cle_pos]
+                        sens = pos.get("sens", "LONG")
+                        p_entree = float(pos.get("entree", d["Prix"]))
+                        sl = float(pos.get("sl", 0))
+                        tp1 = float(pos.get("tp1", 0))
+                        tp2 = float(pos.get("tp2", 0))
+                        marge_p = float(pos.get("marge", 100.0))
+                        levier_p = float(pos.get("levier", levier_strat))
+                        notionnel = marge_p * levier_p
+
+                        if "SHORT" in sens:
+                            if not pos.get("tp1_hit", False) and low <= tp1:
+                                pos["tp1_hit"] = True
+                                pnl_50 = (
+                                    (p_entree - tp1) / p_entree
+                                ) * (notionnel * 0.5)
+                                compte["solde"] += pnl_50
+                                pos["sl"] = p_entree
+                            elif pos.get("tp1_hit", False) and low <= tp2:
+                                pnl_runner = (
+                                    (p_entree - tp2) / p_entree
+                                ) * (notionnel * 0.5)
+                                pnl_tot = (
+                                    (p_entree - tp1) / p_entree
+                                ) * (notionnel * 0.5) + pnl_runner
+                                compte["solde"] += pnl_runner
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    True,
+                                    pnl_tot,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl_tot, 2),
+                                        "win": True,
+                                        "date": heure_fr_trade,
+                                    },
+                                )
+                                del compte["positions"][cle_pos]
+                            elif high >= sl:
+                                if pos.get("tp1_hit", False):
+                                    pnl_tot = (
+                                        (p_entree - tp1) / p_entree
+                                    ) * (notionnel * 0.5)
+                                    mettre_a_jour_ia_collective(
+                                        trader_courant,
+                                        paire,
+                                        motif_fam,
+                                        True,
+                                        pnl_tot,
+                                    )
+                                    compte["historique"].insert(
+                                        0,
+                                        {
+                                            "strategie": p_nom,
+                                            "paire": paire,
+                                            "sens": sens,
+                                            "pnl": round(pnl_tot, 2),
+                                            "win": True,
+                                            "date": heure_fr_trade,
+                                        },
+                                    )
+                                else:
+                                    pnl = (
+                                        (p_entree - sl) / p_entree
+                                    ) * notionnel
+                                    compte["solde"] += pnl
+                                    mettre_a_jour_ia_collective(
+                                        trader_courant,
+                                        paire,
+                                        motif_fam,
+                                        False,
+                                        pnl,
+                                    )
+                                    compte["historique"].insert(
+                                        0,
+                                        {
+                                            "strategie": p_nom,
+                                            "paire": paire,
+                                            "sens": sens,
+                                            "pnl": round(pnl, 2),
+                                            "win": False,
+                                            "date": heure_fr_trade,
+                                        },
+                                    )
+                                del compte["positions"][cle_pos]
+
+                        elif "LONG" in sens:
+                            if not pos.get("tp1_hit", False) and high >= tp1:
+                                pos["tp1_hit"] = True
+                                pnl_50 = (
+                                    (tp1 - p_entree) / p_entree
+                                ) * (notionnel * 0.5)
+                                compte["solde"] += pnl_50
+                                pos["sl"] = p_entree
+                            elif pos.get("tp1_hit", False) and high >= tp2:
+                                pnl_runner = (
+                                    (tp2 - p_entree) / p_entree
+                                ) * (notionnel * 0.5)
+                                pnl_tot = (
+                                    (tp1 - p_entree) / p_entree
+                                ) * (notionnel * 0.5) + pnl_runner
+                                compte["solde"] += pnl_runner
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    True,
+                                    pnl_tot,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl_tot, 2),
+                                        "win": True,
+                                        "date": heure_fr_trade,
+                                    },
+                                )
+                                del compte["positions"][cle_pos]
+                            elif low <= sl:
+                                if pos.get("tp1_hit", False):
+                                    pnl_tot = (
+                                        (tp1 - p_entree) / p_entree
+                                    ) * (notionnel * 0.5)
+                                    mettre_a_jour_ia_collective(
+                                        trader_courant,
+                                        paire,
+                                        motif_fam,
+                                        True,
+                                        pnl_tot,
+                                    )
+                                    compte["historique"].insert(
+                                        0,
+                                        {
+                                            "strategie": p_nom,
+                                            "paire": paire,
+                                            "sens": sens,
+                                            "pnl": round(pnl_tot, 2),
+                                            "win": True,
+                                            "date": heure_fr_trade,
+                                        },
+                                    )
+                                else:
+                                    pnl = (
+                                        (sl - p_entree) / p_entree
+                                    ) * notionnel
+                                    compte["solde"] += pnl
+                                    mettre_a_jour_ia_collective(
+                                        trader_courant,
+                                        paire,
+                                        motif_fam,
+                                        False,
+                                        pnl,
+                                    )
+                                    compte["historique"].insert(
+                                        0,
+                                        {
+                                            "strategie": p_nom,
+                                            "paire": paire,
+                                            "sens": sens,
+                                            "pnl": round(pnl, 2),
+                                            "win": False,
+                                            "date": heure_fr_trade,
+                                        },
+                                    )
+                                del compte["positions"][cle_pos]
+
+                    elif len(compte["positions"]) < 4 and d["Signal_Detecte"]:
+                        compte["positions"][cle_pos] = {
+                            "strategie": p_nom,
+                            "sens": d["Signal_Detecte"],
+                            "motif": d["Motif"],
+                            "entree": d["Opt_Price"],
+                            "sl": d["SL"],
+                            "tp1": d["TP1"],
+                            "tp2": d["TP2"],
+                            "marge": 100.0,
+                            "levier": levier_strat,
+                            "tp1_hit": False,
+                            "date_open": heure_fr_trade,
+                        }
+
+        mettre_a_jour_un_compte(trader_courant, executer_moteur)
+
+    # 5. Onglets de Contenu
+    tab_auto, tab_radar, tab_ia, tab_classement, tab_calc = st.tabs(
+        [
+            f"🤖 Auto ({trader_courant})",
+            f"⚡ Radar ({profil_cle})",
+            "🧠 Cerveau IA",
+            "🏆 Classement",
+            "🧮 Calculateur",
+        ]
+    )
+
+    # Onglet 1 : Auto-Trader
+    with tab_auto:
+        c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
+        col_t1, col_t2 = st.columns([2, 1])
+        pnl_auto = c_fresh["solde"] - c_fresh["capital_initial"]
+
+        with col_t1:
+            st.markdown(
+                f"💰 **Solde :** `{c_fresh['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
+                unsafe_allow_html=True,
+            )
+
+        with col_t2:
+            nouvel_etat = st.toggle(
+                "⚡ ACTIVER L'AUTO",
+                value=c_fresh.get("auto_actif", False),
+                key="toggle_auto_live_smooth",
+            )
+            if nouvel_etat != c_fresh.get("auto_actif", False):
+
+                def toggle_etat(c):
+                    c["auto_actif"] = nouvel_etat
+
+                mettre_a_jour_un_compte(trader_courant, toggle_etat)
+                st.rerun()
+
+        if c_fresh["positions"]:
+            st.markdown("#### 🚀 Positions Ouvertes :")
+            for cle, pos in list(c_fresh["positions"].items()):
+                strat_nom = pos.get("strategie", "Auto")
+                paire_nom = cle.split("_")[1] if "_" in cle else cle
+                sens_nom = pos.get("sens", "LONG")
+                levier_nom = pos.get("levier", 50)
+                entree_val = formater_prix(pos.get("entree", 0))
+                sl_val = formater_prix(pos.get("sl", 0))
+                tp1_val = formater_prix(pos.get("tp1", 0))
+                tp2_val = formater_prix(pos.get("tp2", 0))
+                tp1_statut = (
+                    "✅ Breakeven" if pos.get("tp1_hit", False) else "⏳ Attente"
+                )
+
+                st.markdown(
+                    f"""
+                <div class="pos-card">
+                    <b>[{strat_nom}] {paire_nom} ({sens_nom} x{levier_nom})</b><br>
+                    🎯 <b>Entrée :</b> {entree_val} | 🛑 <b>SL :</b> {sl_val}<br>
+                    💰 <b>TP1 :</b> {tp1_val} [{tp1_statut}] | 🚀 <b>TP2 :</b> {tp2_val}
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("👀 Aucune position ouverte pour le moment.")
+
+        if c_fresh["historique"]:
+            st.markdown("#### 📜 Derniers Trades Clôturés :")
+            st.dataframe(
+                pd.DataFrame(c_fresh["historique"][:5]), hide_index=True
+            )
+
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_smooth"):
+
+            def reset_c(c):
+                c["solde"] = 1000.0
+                c["capital_initial"] = 1000.0
+                c["auto_actif"] = False
+                c["positions"] = {}
+                c["historique"] = []
+
+            mettre_a_jour_un_compte(trader_courant, reset_c)
+            st.rerun()
+
+    # Onglet 2 : Radar
+    with tab_radar:
+        memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
+        if memoire_active:
+            for p, info in list(memoire_active.items()):
+                temps_restant = int(
+                    durees_profils.get(profil_cle, 120)
+                    - (maintenant_ts - info["timestamp"])
+                )
+                classe = (
+                    "alert-card-long"
+                    if "LONG" in info["signal"]
+                    else "alert-card-short"
+                )
+                st.markdown(
+                    f"""
+                <div class="{classe}">
+                    <b>⚡ {p} : {info['signal']} ({info['motif']})</b> <span class="timer-badge">⏱️ {max(0, temps_restant)}s</span><br>
+                    🎯 <span class="opt-price">Limit : {formater_prix(info['prix_entree'])} USDT</span><br>
+                    🛑 SL : {formater_prix(info['sl'])} | 💰 TP1 : {formater_prix(info['tp1'])} | 🚀 TP2 : {formater_prix(info['tp2'])}
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+        donnees_affichees = donnees_tous_profils.get(profil_cle, [])
+        lignes_tableau = []
+        for d in donnees_affichees:
+            paire = d["Paire"]
+            statut = (
+                memoire_active[paire]["signal"]
+                if paire in memoire_active
+                else "VEILLE ⚪"
+            )
+            prix_reel_mexc = prix_mexc_direct.get(paire, d["Prix"])
+
+            lignes_tableau.append(
+                {
+                    "Paire": paire,
+                    "Prix Actuel": formater_prix(prix_reel_mexc),
+                    "Statut": statut,
+                    "Range Structure": d["Range_Str"],
+                    "RSI": d["RSI"],
+                }
+            )
+        st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
+
+    # Onglet 3 : Cerveau IA
+    with tab_ia:
+        ia_stats = charger_experience_ia_collective()
+        st.markdown(
+            f"""
+        <div class="xp-card">
+            <b>🏆 Niveau : <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP Partagés)<br>
+            <small>Chaque trade améliore les filtres de tout le groupe.</small>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+        for lecon in ia_stats["lecons_apprises"][:4]:
+            st.caption(f"• {lecon}")
+
+    # Onglet 4 : Classement
+    with tab_classement:
+        liste_classement = []
+        comptes_live = charger_tous_les_comptes()
+        for nom, c in comptes_live.items():
+            pnl = c["solde"] - c["capital_initial"]
+            trades_nb = len(c.get("historique", []))
+            wins = sum(1 for t in c.get("historique", []) if t.get("win", False))
+            wr = (wins / trades_nb * 100) if trades_nb > 0 else 0.0
+            liste_classement.append(
+                {
+                    "Trader": f"👤 {nom}",
+                    "Solde": f"{c['solde']:.1f} $",
+                    "PnL": f"{pnl:+.1f} $",
+                    "WR": f"{wr:.0f}%",
+                    "Trades": trades_nb,
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(liste_classement).sort_values(
+                by="PnL", ascending=False
+            ),
+            hide_index=True,
+        )
+
+    # Onglet 5 : Calculateur
+    with tab_calc:
+        c1, c2 = st.columns(2)
+        paire_sel = c1.selectbox(
+            "Paire", [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
+        )
+        sens_sel = c2.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
+        is_long = "LONG" in sens_sel
+
+        col_e, col_sl = st.columns(2)
+        p_entree = col_e.number_input(
+            "Entrée ($)", value=106.20, step=0.01, format="%.5f"
+        )
+        p_sl = col_sl.number_input(
+            "SL ($)", value=105.90, step=0.01, format="%.5f"
+        )
+
+        marge_fixe = st.number_input("Marge (USDT)", value=10.0, step=5.0)
+
+        if (is_long and p_sl < p_entree) or ((not is_long) and p_sl > p_entree):
+            distance = abs(p_entree - p_sl)
+            pct_dist = distance / p_entree
+            notionnel = marge_fixe * levier_suggere
+            perte_sl = pct_dist * notionnel
+
+            dist_liq_pct = (1.0 / levier_suggere) * 0.90
+            p_liq = (
+                p_entree * (1 - dist_liq_pct)
+                if is_long
+                else p_entree * (1 + dist_liq_pct)
+            )
+            tp1 = (
+                p_entree + (1.8 * distance)
+                if is_long
+                else p_entree - (1.8 * distance)
+            )
+            tp2 = (
+                p_entree + (3.8 * distance)
+                if is_long
+                else p_entree - (3.8 * distance)
+            )
+
+            st.markdown(
+                f"""
+            <div class="metric-card">
+                <b>Marge :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>SL :</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
+                🎯 <b>TP1 :</b> {formater_prix(tp1)} | 🚀 <b>TP2 Runner :</b> {formater_prix(tp2)}<br>
+                💀 <b>Liquidation :</b> {formater_prix(p_liq)}
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+
+# Lancement du bloc dynamique
+bloc_live_auto_actualise()
