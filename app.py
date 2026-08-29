@@ -32,34 +32,43 @@ try:
 except ImportError:
     has_autorefresh = False
 
-# Configuration Streamlit Mobile & Dark Mode
+# Configuration Mobile First
 st.set_page_config(
-    page_title="Cockpit Trader IA Unifié",
-    page_icon="🧠",
+    page_title="Cockpit Trader Mobile",
+    page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
+# CSS ÉCO-BATTERIE (Noir Pur OLED + 0 Animation GPU)
 st.markdown(
     """
 <style>
-    .stApp { background-color: #080A0E; color: #FAFAFA; }
-    .metric-card { background-color: #12161F; border-radius: 8px; padding: 12px; border-left: 4px solid #2962FF; margin-bottom: 8px; }
-    .xp-card { background-color: #1A1528; border-radius: 8px; padding: 14px; border: 1px solid #9C27B0; margin-bottom: 12px; }
-    .user-badge { background-color: #0D2818; color: #00E676; padding: 5px 12px; border-radius: 6px; font-weight: bold; border: 1px solid #00E676; }
+    /* Fond Noir Pur OLED : Les pixels noirs s'éteignent sur smartphone */
+    .stApp { background-color: #000000; color: #E6EDF3; }
     
-    .mini-card-conservateur { background-color: #0E1626; border-radius: 8px; padding: 10px; border-top: 4px solid #2979FF; margin-bottom: 8px; min-height: 110px; }
-    .mini-card-intraday { background-color: #161124; border-radius: 8px; padding: 10px; border-top: 4px solid #9C27B0; margin-bottom: 8px; min-height: 110px; }
-    .mini-card-scalping { background-color: #1C1608; border-radius: 8px; padding: 10px; border-top: 4px solid #FF9100; margin-bottom: 8px; min-height: 110px; }
-    .mini-card-ultrascalp { background-color: #21090D; border-radius: 8px; padding: 10px; border-top: 4px solid #FF1744; margin-bottom: 8px; min-height: 110px; }
+    /* Cartes sans ombres lourdes pour soulager le processeur mobile */
+    .metric-card { background-color: #0D1117; border-radius: 8px; padding: 10px; border-left: 3px solid #2962FF; margin-bottom: 6px; }
+    .xp-card { background-color: #120E1E; border-radius: 8px; padding: 10px; border: 1px solid #9C27B0; margin-bottom: 8px; }
+    .user-badge { background-color: #061A0E; color: #00E676; padding: 4px 8px; border-radius: 5px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; }
     
-    .pos-card { background-color: #151A24; border-radius: 8px; padding: 12px; border: 1px solid #00E676; margin-bottom: 8px; }
-    .alert-card-long { background-color: #082618; border-radius: 8px; padding: 14px; border-left: 5px solid #00E676; margin-bottom: 10px; }
-    .alert-card-short { background-color: #2D0C13; border-radius: 8px; padding: 14px; border-left: 5px solid #FF1744; margin-bottom: 10px; }
-    .opt-price { color: #FFD700; font-size: 18px; font-weight: bold; }
-    .tp-runner { color: #00E676; font-size: 16px; font-weight: bold; }
-    .timer-badge { background-color: #1F2430; color: #00E676; padding: 3px 8px; border-radius: 5px; font-size: 13px; font-weight: bold; }
-    .danger-liq { background-color: #4A0000; border-radius: 8px; padding: 10px; border: 1px solid #FF1744; color: #FFF; font-weight: bold; }
+    /* Bandeau News Éco-Batterie Statique */
+    .news-box { background-color: #0D1117; border-radius: 6px; padding: 8px 12px; border: 1px solid #21262D; margin-bottom: 10px; font-size: 12px; }
+    
+    .tag-bull { color: #00E676; font-weight: bold; background: rgba(0,230,118,0.15); padding: 2px 6px; border-radius: 3px; }
+    .tag-bear { color: #FF1744; font-weight: bold; background: rgba(255,23,68,0.15); padding: 2px 6px; border-radius: 3px; }
+    .tag-neu { color: #8B949E; font-weight: bold; background: rgba(139,148,158,0.15); padding: 2px 6px; border-radius: 3px; }
+
+    .mini-card-conservateur { background-color: #050B14; border-radius: 6px; padding: 8px; border-top: 3px solid #2979FF; margin-bottom: 6px; }
+    .mini-card-intraday { background-color: #0D0814; border-radius: 6px; padding: 8px; border-top: 3px solid #9C27B0; margin-bottom: 6px; }
+    .mini-card-scalping { background-color: #140F04; border-radius: 6px; padding: 8px; border-top: 3px solid #FF9100; margin-bottom: 6px; }
+    .mini-card-ultrascalp { background-color: #140508; border-radius: 6px; padding: 8px; border-top: 3px solid #FF1744; margin-bottom: 6px; }
+    
+    .pos-card { background-color: #0D1117; border-radius: 6px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
+    .alert-card-long { background-color: #04140B; border-radius: 6px; padding: 10px; border-left: 4px solid #00E676; margin-bottom: 8px; }
+    .alert-card-short { background-color: #170508; border-radius: 6px; padding: 10px; border-left: 4px solid #FF1744; margin-bottom: 8px; }
+    .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
+    .timer-badge { background-color: #161B22; color: #00E676; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -83,7 +92,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES MULTI-UTILISATEURS (PERSISTANT)
+# 👥 GESTION ATOMIQUE DES COMPTES
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -99,7 +108,14 @@ def charger_tous_les_comptes():
             "auto_actif": False,
             "positions": {},
             "historique": [],
-        }
+        },
+        "Alex": {
+            "solde": 1000.0,
+            "capital_initial": 1000.0,
+            "auto_actif": False,
+            "positions": {},
+            "historique": [],
+        },
     }
 
 
@@ -123,7 +139,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
 
 
 # ==========================================================
-# 🧠 CERVEAU COLLECTIF IA & COOLDOWN (100% SYNCHRO)
+# 🧠 CERVEAU COLLECTIF UNIQUE DE L'IA
 # ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
@@ -139,7 +155,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif unifié prêt. Synchronisation avec le bot réel et le simulateur."
+            "Cerveau collectif prêt. Mode Éco Mobile activé."
         ],
     }
 
@@ -171,22 +187,20 @@ def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl
     if win:
         ia["scores_paires"][paire] = round(min(score_p + 0.05, 1.5), 2)
         ia["pertes_consecutives"][motif_famille] = 0
-        lecon = f"✅ [{nom_trader} - {heure_str}] Gain sur {paire} ({motif_famille}) : +{pnl:.2f} USDT."
+        lecon = f"✅ [{nom_trader} - {heure_str}] Gain {paire} ({motif_famille}) : +{pnl:.2f} USDT."
     else:
         ia["scores_paires"][paire] = round(max(score_p - 0.08, 0.5), 2)
         ia["pertes_consecutives"][motif_famille] = (
             ia["pertes_consecutives"].get(motif_famille, 0) + 1
         )
         if ia["pertes_consecutives"][motif_famille] >= 2:
-            ia["cooldowns"][motif_famille] = (
-                time.time() + 720
-            )  # Cooldown 12 min
-            lecon = f"🛡️ [{heure_str}] 2 pertes sur {motif_famille} : Cooldown 12 min activé pour tout le monde !"
+            ia["cooldowns"][motif_famille] = time.time() + 720
+            lecon = f"🛡️ [{heure_str}] Cooldown 12 min activé sur {motif_famille} !"
         else:
-            lecon = f"❌ [{nom_trader} - {heure_str}] Perte sur {paire} ({motif_famille}) : {pnl:.2f} USDT."
+            lecon = f"❌ [{nom_trader} - {heure_str}] Perte {paire} : {pnl:.2f} USDT."
 
     ia["lecons_apprises"].insert(0, lecon)
-    ia["lecons_apprises"] = ia["lecons_apprises"][:8]
+    ia["lecons_apprises"] = ia["lecons_apprises"][:6]
     sauvegarder_experience_ia_collective(ia)
 
 
@@ -203,26 +217,30 @@ def formater_prix(p):
         return f"{p:.2f}"
 
 
-if not os.path.exists(FICHIER_JOURNAL):
-    with open(FICHIER_JOURNAL, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                "Date",
-                "Paire",
-                "Sens",
-                "Prix Entree",
-                "Stop Loss",
-                "Take Profit",
-                "Marge (USDT)",
-                "Levier",
-                "Resultat",
-                "PnL (USDT)",
-            ]
+# Cache allongé pour économiser la data et la batterie
+@st.cache_data(ttl=120)
+def charger_news_statiques():
+    try:
+        flux = feedparser.parse(
+            "https://news.google.com/rss/search?q=crypto+bitcoin+solana+when:2d&hl=en-US&gl=US&ceid=US:en"
         )
+        items = []
+        for entry in flux.entries[:3]:
+            titre = entry.title
+            compound = analyzer.polarity_scores(titre)["compound"]
+            if compound >= 0.15:
+                tag = '<span class="tag-bull">BULLISH</span>'
+            elif compound <= -0.15:
+                tag = '<span class="tag-bear">BEARISH</span>'
+            else:
+                tag = '<span class="tag-neu">NEUTRE</span>'
+            items.append(f"{tag} {titre[:55]}...")
+        return items
+    except Exception:
+        return ["<span class='tag-neu'>MARCHE</span> Synchronisation flux..."]
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=60)
 def charger_fear_and_greed():
     try:
         res = requests.get(
@@ -235,30 +253,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=60)
-def charger_news_ia():
-    try:
-        flux = feedparser.parse(
-            "https://news.google.com/rss/search?q=crypto+bitcoin+solana+when:2d&hl=en-US&gl=US&ceid=US:en"
-        )
-        articles, scores = [], []
-        for entry in flux.entries[:4]:
-            titre = entry.title
-            compound = analyzer.polarity_scores(titre)["compound"]
-            scores.append(compound)
-            tag = (
-                "🟢 HAUSSIER"
-                if compound >= 0.15
-                else ("🔴 BAISSIER" if compound <= -0.15 else "⚪ NEUTRE")
-            )
-            articles.append((tag, titre))
-        score_ia = int(np.clip(5.5 + (np.mean(scores) * 4.5), 1, 10))
-        return score_ia, articles
-    except Exception:
-        return 5, []
-
-
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=20)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -277,7 +272,6 @@ def charger_donnees_marche_globales():
     return donnees
 
 
-# Moteur Exact Validé par le Banc d'Essai
 def analyser_profil(profil_court, donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
@@ -293,18 +287,10 @@ def analyser_profil(profil_court, donnees_globales):
         mult_sl, mult_tp1, mult_tp2 = 0.35, 1.8, 3.2
     elif profil_court == "Scalping 1m":
         intervalle, lookback = "1m", 10
-        mult_sl, mult_tp1, mult_tp2 = (
-            0.30,
-            1.8,
-            3.5,
-        )  # 🌟 +120% validé au testbench
-    else:  # Ultra-Scalp
+        mult_sl, mult_tp1, mult_tp2 = 0.30, 1.8, 3.5
+    else:
         intervalle, lookback = "1m", 8
-        mult_sl, mult_tp1, mult_tp2 = (
-            0.25,
-            1.8,
-            3.8,
-        )  # 🌟 +384% validé au testbench
+        mult_sl, mult_tp1, mult_tp2 = 0.25, 1.8, 3.8
 
     data = donnees_globales.get(intervalle)
     if data is None:
@@ -382,18 +368,17 @@ def analyser_profil(profil_court, donnees_globales):
                 "SMC",
             )
 
-            # RÈGLES DES 4 PROFILS GAGNANTS
             if profil_court == "Conservateur":
                 motif_famille = "Tendance"
                 if prix < ema_50 and rsi >= 58 and prix < open_p:
                     signal, motif = (
                         "🔴 SHORT",
-                        "Tendance 15m (Sous EMA 50)",
+                        "Tendance 15m",
                     )
                 elif prix > ema_50 and rsi <= 42 and prix > open_p:
                     signal, motif = (
                         "🟢 LONG",
-                        "Tendance 15m (Sur EMA 50)",
+                        "Tendance 15m",
                     )
 
             elif profil_court == "Intraday":
@@ -408,27 +393,21 @@ def analyser_profil(profil_court, donnees_globales):
                 motif_famille = "Momentum"
                 if atr >= 0.08:
                     if (ema_9 < ema_21) and (fvg_bear or rsi >= 60) and (prix < open_p):
-                        signal, motif = "🔴 SHORT", "Momentum 1m x100"
+                        signal, motif = "🔴 SHORT", "Momentum 1m"
                     elif (
                         (ema_9 > ema_21)
                         and (fvg_bull or rsi <= 40)
                         and (prix > open_p)
                     ):
-                        signal, motif = "🟢 LONG", "Momentum 1m x100"
+                        signal, motif = "🟢 LONG", "Momentum 1m"
 
             else:  # Ultra-Scalp
                 motif_famille = "SMC"
                 if atr >= 0.08:
                     if (sweep_h or fvg_bear) and (prix < open_p or rsi >= 58):
-                        signal, motif = (
-                            "🔴 SHORT",
-                            "Ultra-SMC 1m (x150)",
-                        )
+                        signal, motif = "🔴 SHORT", "Ultra-SMC 1m"
                     elif (sweep_l or fvg_bull) and (prix > open_p or rsi <= 42):
-                        signal, motif = (
-                            "🟢 LONG",
-                            "Ultra-SMC 1m (x150)",
-                        )
+                        signal, motif = "🟢 LONG", "Ultra-SMC 1m"
 
             en_cooldown = ts_actuel < ia_data.get("cooldowns", {}).get(
                 motif_famille, 0
@@ -473,7 +452,7 @@ def analyser_profil(profil_court, donnees_globales):
 
 
 # ==========================================================
-# 👤 GESTION PROPRE DU PROFIL UTILISATEUR
+# 👤 GESTION DU PROFIL UTILISATEUR
 # ==========================================================
 comptes_actuels = charger_tous_les_comptes()
 liste_noms = list(comptes_actuels.keys())
@@ -495,9 +474,9 @@ choix_trader = st.sidebar.selectbox(
 st.session_state.trader_session = choix_trader
 trader_courant = st.session_state.trader_session
 
-with st.sidebar.expander("➕ Créer un nouveau profil"):
+with st.sidebar.expander("➕ Créer un profil"):
     nouveau_nom = st.text_input("Prénom / Pseudo :").strip()
-    if st.button("Valider et Rejoindre"):
+    if st.button("Valider"):
         if nouveau_nom:
             comptes_frais = charger_tous_les_comptes()
             if nouveau_nom not in comptes_frais:
@@ -510,7 +489,6 @@ with st.sidebar.expander("➕ Créer un nouveau profil"):
                 }
                 sauvegarder_tous_les_comptes(comptes_frais)
             st.session_state.trader_session = nouveau_nom
-            st.sidebar.success(f"Compte actif : {nouveau_nom} !")
             st.rerun()
 
 compte_actif = comptes_actuels.get(
@@ -525,19 +503,35 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🎛️ LE CURSEUR MAÎTRE AVEC HEURE DE PARIS
+# 🔋 EN-TÊTE ÉCO-BATTERIE & NEWS STATIQUES
 # ==========================================================
-col_h1, col_h2 = st.columns([3, 1])
+col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
-    st.title("🎛️ Cockpit Multi-Traders & IA Unifiée")
-with col_h2:
     st.markdown(
-        f'<div style="text-align:right; padding-top:15px;"><span class="user-badge">👤 {trader_courant}</span></div>',
+        f"### ⚡ Cockpit Pro <span class='user-badge'>👤 {trader_courant}</span>",
         unsafe_allow_html=True,
     )
+with col_h2:
+    # Mode Éco par défaut à 30 secondes pour sauver la batterie
+    activer_auto = st.toggle("🔋 Éco-Refresh (30s)", value=True)
+    if activer_auto and has_autorefresh:
+        st_autorefresh(interval=30 * 1000, key="loop_eco_mobile")
 
+# Bandeau News Statique (0 % d'utilisation GPU)
+news_list = charger_news_statiques()
+fg_score, fg_sentiment = charger_fear_and_greed()
+st.markdown(
+    f"""
+<div class="news-box">
+    <b>📊 F&G: {fg_score}/100 ({fg_sentiment})</b> | {' | '.join(news_list)}
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# Curseur compact
 profil = st.select_slider(
-    "👉 Sélectionnez votre profil actif principal :",
+    "Profil actif :",
     options=[
         "🛡️ Conservateur (15m x20)",
         "⚖️ Intraday (5m x50)",
@@ -576,19 +570,7 @@ else:
         "1m",
     )
 
-col_ref, col_time = st.columns([1, 1])
-with col_ref:
-    activer_auto = st.toggle("🔄 Auto-Refresh Live", value=True)
-    if activer_auto:
-        sec = 5 if "1m" in unite_temps else 10
-        if has_autorefresh:
-            st_autorefresh(interval=sec * 1000, key="loop_unified_master")
-with col_time:
-    maintenant_ts = time.time()
-    heure_paris = obtenir_date_heure_paris("%H:%M:%S")
-    st.caption(
-        f"🕒 Heure de Paris : **{heure_paris}** | Profil : **{profil_cle} ({unite_temps} x{levier_suggere})**"
-    )
+maintenant_ts = time.time()
 
 # ==========================================================
 # 🧠 SYNCHRONISATION MULTI-PROFILS
@@ -672,7 +654,7 @@ if compte_actif.get("auto_actif", False):
                                 (p_entree - tp1) / p_entree
                             ) * (notionnel * 0.5)
                             compte["solde"] += pnl_50
-                            pos["sl"] = p_entree  # Breakeven !
+                            pos["sl"] = p_entree
                         elif pos["tp1_hit"] and low <= tp2:
                             pnl_runner = (
                                 (p_entree - tp2) / p_entree
@@ -840,100 +822,95 @@ if compte_actif.get("auto_actif", False):
     compte_actif = charger_tous_les_comptes().get(trader_courant, compte_actif)
 
 # ==========================================================
-# 👀 VUE PANORAMIQUE DES 4 STYLES
+# 👀 VUE PANORAMIQUE COMPACTE
 # ==========================================================
-st.markdown("### 👀 Vue Panoramique (Opportunités sur les 4 Styles) :")
-
 col_c, col_i, col_s, col_u = st.columns(4)
 with col_c:
     st.markdown(
-        """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><br>""",
         unsafe_allow_html=True,
     )
     sigs_c = st.session_state.memoire_par_profil.get("Conservateur", {})
     if sigs_c:
         for p, info in sigs_c.items():
             st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
         st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
+            "<span style='color:#6E7681;'>⚪ En veille</span>",
             unsafe_allow_html=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_i:
     st.markdown(
-        """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><br>""",
         unsafe_allow_html=True,
     )
     sigs_i = st.session_state.memoire_par_profil.get("Intraday", {})
     if sigs_i:
         for p, info in sigs_i.items():
             st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
         st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
+            "<span style='color:#6E7681;'>⚪ En veille</span>",
             unsafe_allow_html=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_s:
     st.markdown(
-        """<div class="mini-card-scalping"><b>⚡ Scalping (1m x100)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-scalping"><b>⚡ Scalp (1m x100)</b><br>""",
         unsafe_allow_html=True,
     )
     sigs_s = st.session_state.memoire_par_profil.get("Scalping 1m", {})
     if sigs_s:
         for p, info in sigs_s.items():
             st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
         st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
+            "<span style='color:#6E7681;'>⚪ En veille</span>",
             unsafe_allow_html=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_u:
     st.markdown(
-        """<div class="mini-card-ultrascalp"><b>🔥 Ultra-Scalp (1m x150)</b><hr style="margin:4px 0;">""",
+        """<div class="mini-card-ultrascalp"><b>🔥 Ultra (1m x150)</b><br>""",
         unsafe_allow_html=True,
     )
     sigs_u = st.session_state.memoire_par_profil.get("Ultra-Scalp", {})
     if sigs_u:
         for p, info in sigs_u.items():
             st.markdown(
-                f"**{info['signal']}** `{p}`<br>🎯 {formater_prix(info['prix_entree'])}",
+                f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                 unsafe_allow_html=True,
             )
     else:
         st.markdown(
-            "<span style='color:#757575;'>⚪ Veille</span>",
+            "<span style='color:#6E7681;'>⚪ En veille</span>",
             unsafe_allow_html=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("---")
-
 # ==========================================================
 # 📱 ONGLETS PRINCIPAUX
 # ==========================================================
-tab_auto, tab_radar, tab_ia, tab_classement, tab_calc, tab_marche = st.tabs(
+tab_auto, tab_radar, tab_ia, tab_classement, tab_calc = st.tabs(
     [
-        f"🤖 Mon Auto-Trader ({trader_courant})",
+        f"🤖 Auto ({trader_courant})",
         f"⚡ Radar ({profil_cle})",
-        "🧠 Cerveau Collectif IA",
-        "🏆 Classement Amis",
-        f"🧮 Calculateur (x{levier_suggere})",
-        "🌍 Marché & News",
+        "🧠 Cerveau IA",
+        "🏆 Classement",
+        "🧮 Calculateur",
     ]
 )
 
@@ -943,16 +920,16 @@ with tab_auto:
     pnl_auto = compte_actif["solde"] - compte_actif["capital_initial"]
 
     with col_t1:
-        st.subheader(f"💼 Portefeuille de {trader_courant}")
         st.markdown(
-            f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT`  |  **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT ({pnl_auto/10:+.2f}%)</span>",
+            f"💰 **Solde :** `{compte_actif['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
             unsafe_allow_html=True,
         )
 
     with col_t2:
         nouvel_etat = st.toggle(
-            "⚡ ACTIVER MON AUTO-TRADING",
+            "⚡ ACTIVER L'AUTO",
             value=compte_actif.get("auto_actif", False),
+            key="toggle_auto_mobile",
         )
         if nouvel_etat != compte_actif.get("auto_actif", False):
 
@@ -962,23 +939,15 @@ with tab_auto:
             mettre_a_jour_un_compte(trader_courant, toggle_etat)
             st.rerun()
 
-    if compte_actif.get("auto_actif", False):
-        st.success(
-            f"🟢 **Auto-Trader de {trader_courant} EN LIGNE** : Vos 4 stratégies tournent en continu !"
-        )
-    else:
-        st.info("⚪ **Auto-Trader en Pause** pour ce profil.")
-
-    st.markdown(f"#### 🚀 Positions Ouvertes pour {trader_courant} :")
     if compte_actif["positions"]:
+        st.markdown("#### 🚀 Positions Ouvertes :")
         for cle, pos in list(compte_actif["positions"].items()):
             st.markdown(
                 f"""
             <div class="pos-card">
-                <b>[{pos['strategie']}] {cle.split('_')[1]} ({pos['sens']} x{pos['levier']})</b> | Ouvert à {pos.get('date_open', '')}<br>
-                🎯 <b>Entrée :</b> {formater_prix(pos['entree'])} USDT | 🛑 <b>Stop :</b> {formater_prix(pos['sl'])} USDT<br>
-                💰 <b>TP1 (50%) :</b> {formater_prix(pos['tp1'])} USDT [{'✅ Breakeven Actif' if pos['tp1_hit'] else '⏳ En attente'}]<br>
-                🚀 <b>TP2 Runner :</b> {formater_prix(pos['tp2'])} USDT
+                <b>[{pos['strategie']}] {cle.split('_')[1]} ({pos['sens']} x{pos['levier']})</b><br>
+                🎯 <b>Entrée :</b> {formater_prix(pos['entree'])} | 🛑 <b>SL :</b> {formater_prix(pos['sl'])}<br>
+                💰 <b>TP1 :</b> {formater_prix(pos['tp1'])} [{'✅ Breakeven' if pos['tp1_hit'] else '⏳ Attente'}] | 🚀 <b>TP2 :</b> {formater_prix(pos['tp2'])}
             </div>
             """,
                 unsafe_allow_html=True,
@@ -986,15 +955,13 @@ with tab_auto:
     else:
         st.caption("👀 Aucune position ouverte.")
 
-    st.markdown("#### 📜 Mon Historique Personnel de Trades :")
     if compte_actif["historique"]:
-        df_hist = pd.DataFrame(compte_actif["historique"])
-        st.dataframe(df_hist, hide_index=True)
-    else:
-        st.caption("Aucun trade clôturé pour le moment.")
+        st.markdown("#### 📜 Derniers Trades Clôturés :")
+        st.dataframe(
+            pd.DataFrame(compte_actif["historique"][:5]), hide_index=True
+        )
 
-    st.markdown("---")
-    if st.button(f"🔄 Réinitialiser le compte de {trader_courant} à 1000 USDT"):
+    if st.button("🔄 Reset solde à 1000 USDT"):
 
         def reset_c(c):
             c["solde"] = 1000.0
@@ -1004,22 +971,17 @@ with tab_auto:
             c["historique"] = []
 
         mettre_a_jour_un_compte(trader_courant, reset_c)
-        st.success(f"Compte de {trader_courant} réinitialisé !")
         st.rerun()
 
 # 2. RADAR
 with tab_radar:
     memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
     if memoire_active:
-        st.subheader(f"🎯 Opportunités ({profil_cle}) :")
         for p, info in list(memoire_active.items()):
             temps_restant = int(
                 durees_profils.get(profil_cle, 120)
                 - (maintenant_ts - info["timestamp"])
             )
-            minutes_rest = max(0, temps_restant // 60)
-            secondes_rest = max(0, temps_restant % 60)
-
             classe = (
                 "alert-card-long"
                 if "LONG" in info["signal"]
@@ -1028,19 +990,13 @@ with tab_radar:
             st.markdown(
                 f"""
             <div class="{classe}">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3>⚡ {p} : {info['signal']} ({info['motif']})</h3>
-                    <span class="timer-badge">⏱️ Valide : {minutes_rest}m {secondes_rest:02d}s</span>
-                </div>
-                🎯 <span class="opt-price">ENTRÉE OPTIMALE : {formater_prix(info['prix_entree'])} USDT</span><br>
-                🛑 <b>Stop-Loss :</b> {formater_prix(info['sl'])} USDT<br>
-                💰 <b>TP1 (50% + Breakeven) :</b> {formater_prix(info['tp1'])} USDT<br>
-                🚀 <span class="tp-runner">TP2 RUNNER : {formater_prix(info['tp2'])} USDT</span>
+                <b>⚡ {p} : {info['signal']} ({info['motif']})</b> <span class="timer-badge">⏱️ {max(0, temps_restant)}s</span><br>
+                🎯 <span class="opt-price">Limit : {formater_prix(info['prix_entree'])} USDT</span><br>
+                🛑 SL : {formater_prix(info['sl'])} | 💰 TP1 : {formater_prix(info['tp1'])} | 🚀 TP2 : {formater_prix(info['tp2'])}
             </div>
             """,
                 unsafe_allow_html=True,
             )
-        st.markdown("---")
 
     donnees_affichees = donnees_tous_profils.get(profil_cle, [])
     lignes_tableau = []
@@ -1054,59 +1010,30 @@ with tab_radar:
         lignes_tableau.append(
             {
                 "Paire": paire,
-                "Prix Actuel": formater_prix(d["Prix"]),
+                "Prix": formater_prix(d["Prix"]),
                 "Statut": statut,
                 "RSI": d["RSI"],
-                "Unité": d["Intervalle"],
             }
         )
-
-    st.subheader(f"📊 Surveillance des 7 Paires en direct ({unite_temps})")
     st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
 # 3. CERVEAU COLLECTIF IA
 with tab_ia:
-    st.subheader("🧠 Cerveau Collectif Unique (Alimenté par tous les traders)")
     ia_stats = charger_experience_ia_collective()
+    st.markdown(
+        f"""
+    <div class="xp-card">
+        <b>🏆 Niveau : <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP Partagés)<br>
+        <small>Chaque trade améliore les filtres de tout le groupe.</small>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    for lecon in ia_stats["lecons_apprises"][:4]:
+        st.caption(f"• {lecon}")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(
-            f"""
-        <div class="xp-card">
-            <h4>🏆 Niveau Collectif : <span style="color:#00E676;">{ia_stats['niveau']}</span></h4>
-            <h2>⭐ {ia_stats['xp_total']} XP Partagés</h2>
-            <small>Chaque trade gagné par n'importe quel ami fait progresser cette IA !</small>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    with c2:
-        st.markdown("#### 📊 Confiance Collective par Paire :")
-        df_confiance = pd.DataFrame(
-            [
-                {
-                    "Paire": k,
-                    "Score Confiance": f"{v:.2f}x",
-                    "Statut": (
-                        "🟢 Boosté"
-                        if v > 1.05
-                        else ("🔴 Attention" if v < 0.80 else "⚪ Neutre")
-                    ),
-                }
-                for k, v in ia_stats["scores_paires"].items()
-            ]
-        )
-        st.dataframe(df_confiance, hide_index=True)
-
-    st.markdown("#### 📝 Dernières Leçons Apprises par la Ruche IA :")
-    for lecon in ia_stats["lecons_apprises"]:
-        st.markdown(f"• {lecon}")
-
-# 4. CLASSEMENT DES AMIS
+# 4. CLASSEMENT
 with tab_classement:
-    st.subheader("🏆 Classement en Direct des Traders")
     liste_classement = []
     comptes_live = charger_tous_les_comptes()
     for nom, c in comptes_live.items():
@@ -1117,60 +1044,50 @@ with tab_classement:
         liste_classement.append(
             {
                 "Trader": f"👤 {nom}",
-                "Solde (USDT)": f"{c['solde']:.2f} $",
-                "PnL Net": f"{pnl:+.2f} $",
-                "Performance": f"{pnl/10:+.2f} %",
-                "Winrate": f"{wr:.1f} %",
+                "Solde": f"{c['solde']:.1f} $",
+                "PnL": f"{pnl:+.1f} $",
+                "WR": f"{wr:.0f}%",
                 "Trades": trades_nb,
             }
         )
-
-    df_rank = pd.DataFrame(liste_classement).sort_values(
-        by="PnL Net", ascending=False
+    st.dataframe(
+        pd.DataFrame(liste_classement).sort_values(
+            by="PnL", ascending=False
+        ),
+        hide_index=True,
     )
-    st.dataframe(df_rank, hide_index=True)
 
 # 5. CALCULATEUR
 with tab_calc:
-    st.subheader(f"🧮 Calculateur de Risque ({profil})")
-    col_p, col_s = st.columns(2)
-    liste_options = [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
-    paire_sel = col_p.selectbox("Contrat Futures", liste_options)
-    sens_sel = col_s.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
+    c1, c2 = st.columns(2)
+    paire_sel = c1.selectbox(
+        "Paire", [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
+    )
+    sens_sel = c2.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
     is_long = "LONG" in sens_sel
 
     col_e, col_sl = st.columns(2)
     p_entree = col_e.number_input(
-        "🎯 Prix d'Entrée (USDT)", value=106.20, step=0.01, format="%.5f"
+        "Entrée ($)", value=106.20, step=0.01, format="%.5f"
     )
     p_sl = col_sl.number_input(
-        "🛑 Stop-Loss (USDT)", value=105.90, step=0.01, format="%.5f"
+        "SL ($)", value=105.90, step=0.01, format="%.5f"
     )
 
-    col_m, col_lev = st.columns(2)
-    marge_fixe = col_m.number_input(
-        "Marge engagée (USDT)", value=100.0, step=10.0
-    )
-    levier_choisi = col_lev.slider(
-        "Levier", min_value=1, max_value=200, value=levier_suggere
-    )
+    marge_fixe = st.number_input("Marge (USDT)", value=10.0, step=5.0)
 
     if (is_long and p_sl < p_entree) or ((not is_long) and p_sl > p_entree):
         distance = abs(p_entree - p_sl)
         pct_dist = distance / p_entree
-
-        notionnel = marge_fixe * levier_choisi
-        quantite = notionnel / p_entree
+        notionnel = marge_fixe * levier_suggere
         perte_sl = pct_dist * notionnel
 
-        dist_liq_pct = (1.0 / levier_choisi) * 0.90
+        dist_liq_pct = (1.0 / levier_suggere) * 0.90
         p_liq = (
             p_entree * (1 - dist_liq_pct)
             if is_long
             else p_entree * (1 + dist_liq_pct)
         )
-        distance_liq_dollars = abs(p_liq - p_entree)
-
         tp1 = (
             p_entree + (1.8 * distance)
             if is_long
@@ -1181,55 +1098,14 @@ with tab_calc:
             if is_long
             else p_entree - (3.8 * distance)
         )
-        gain_tp1 = (1.8 * distance / p_entree) * notionnel
-        gain_tp2 = (3.8 * distance / p_entree) * notionnel
-        securite_validee = (p_sl > p_liq) if is_long else (p_sl < p_liq)
 
-        st.markdown("---")
         st.markdown(
             f"""
         <div class="metric-card">
-            <h3>📋 Ordre Recommandé (x{levier_choisi}) :</h3>
-            <b>💵 Marge Engagée :</b> <b>{marge_fixe:.2f} USDT</b> (Notionnel : {notionnel:,.2f} USDT)<br>
-            <b>🛑 Perte au Stop-Loss :</b> <span style="color:#FF5252;"><b>-{perte_sl:.2f} USDT</b> ({pct_dist:.2%})</span><br>
-            <b>🎯 Gain TP1 (50%) :</b> <span style="color:#00E676;"><b>+{gain_tp1:.2f} USDT</b></span> ({formater_prix(tp1)} USDT)<br>
-            <b>🚀 Gain TP2 RUNNER :</b> <span style="font-size:20px; color:#00E676;"><b>+{gain_tp2:.2f} USDT</b></span> ({formater_prix(tp2)} USDT)<br>
-            <b>💀 PRIX DE LIQUIDATION :</b> <b>{formater_prix(p_liq)} USDT</b> (Distance : {formater_prix(distance_liq_dollars)} USDT)
+            <b>Marge :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>SL :</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
+            🎯 <b>TP1 :</b> {formater_prix(tp1)} | 🚀 <b>TP2 Runner :</b> {formater_prix(tp2)}<br>
+            💀 <b>Liquidation :</b> {formater_prix(p_liq)}
         </div>
         """,
             unsafe_allow_html=True,
         )
-
-# 6. MARCHÉ
-with tab_marche:
-    fg_score, fg_sentiment = charger_fear_and_greed()
-    score_ia, news = charger_news_ia()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(
-            f"""
-        <div class="metric-card">
-            <h4>📊 Fear & Greed Index</h4>
-            <h2>{fg_score} / 100</h2>
-            <b>Sentiment :</b> {fg_sentiment}
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    with col2:
-        st.markdown(
-            f"""
-        <div class="metric-card">
-            <h4>🧠 Sentiment IA des News</h4>
-            <h2>{score_ia} / 10</h2>
-            <b>Tendance :</b> {"RISK-ON 🐂" if score_ia >= 6 else ("RISK-OFF 🐻" if score_ia <= 4 else "NEUTRE ⚪")}
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    st.subheader("📰 Dernières dépêches mondiales")
-    for tag, titre in news:
-        st.markdown(f"**{tag}** — {titre}")
