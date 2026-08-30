@@ -137,6 +137,7 @@ def charger_tous_les_comptes():
             "solde": 1000.0,
             "capital_initial": 1000.0,
             "auto_actif": False,
+            "solana_master_auto": False,
             "positions": {},
             "historique": [],
         },
@@ -144,6 +145,7 @@ def charger_tous_les_comptes():
             "solde": 1000.0,
             "capital_initial": 1000.0,
             "auto_actif": False,
+            "solana_master_auto": False,
             "positions": {},
             "historique": [],
         },
@@ -162,6 +164,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
             "solde": 1000.0,
             "capital_initial": 1000.0,
             "auto_actif": False,
+            "solana_master_auto": False,
             "positions": {},
             "historique": [],
         }
@@ -183,11 +186,21 @@ def charger_experience_ia_collective():
         "xp_total": 1000000,
         "niveau": "Maître Quant Suprême 🥇 (1M XP)",
         "scores_paires": {p.split("-")[0]: 1.0 for p in PAIRES_RADAR},
-        "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
-        "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
+        "cooldowns": {
+            "SMC": 0,
+            "Momentum": 0,
+            "Tendance": 0,
+            "Squeeze Breakout": 0,
+        },
+        "pertes_consecutives": {
+            "SMC": 0,
+            "Momentum": 0,
+            "Tendance": 0,
+            "Squeeze Breakout": 0,
+        },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Filtre de Compression actif : Bollinger 1.7 / Keltner 1.7.",
+            "Mode Autopilote Solana Master actif pour Thomas et Alex.",
         ],
     }
 
@@ -341,7 +354,6 @@ def analyser_solana_master_live():
         df["Datetime"] = pd.to_datetime(df["time"], unit="ms")
         df.set_index("Datetime", inplace=True)
 
-        # ADN 1M XP OPTIMISÉ
         BB_MULT = 1.7
         KC_MULT = 1.7
         GRID_STEP = 0.0035
@@ -382,7 +394,6 @@ def analyser_solana_master_live():
         mom = float(last_c["Momentum"])
         e50 = float(last_c["EMA50"])
 
-        # Niveaux Grid Maker 0% Fees
         grid_levels = []
         for lvl in range(1, 4):
             grid_levels.append(
@@ -393,7 +404,6 @@ def analyser_solana_master_live():
                 }
             )
 
-        # Détection Breakout Squeeze
         breakout_signal = None
         dist = max(atr * 1.2, p * 0.012)
         if not sq_on and abs(mom) > 0.03:
@@ -848,6 +858,7 @@ with st.sidebar.expander("➕ Créer un profil"):
                     "solde": 1000.0,
                     "capital_initial": 1000.0,
                     "auto_actif": False,
+                    "solana_master_auto": False,
                     "positions": {},
                     "historique": [],
                 }
@@ -861,6 +872,7 @@ compte_actif = comptes_actuels.get(
         "solde": 1000.0,
         "capital_initial": 1000.0,
         "auto_actif": False,
+        "solana_master_auto": False,
         "positions": {},
         "historique": [],
     },
@@ -954,6 +966,7 @@ def bloc_live_auto_actualise():
     maintenant_ts = time.time()
     prix_mexc_direct = obtenir_prix_live_multi_sources()
     donnees_globales = charger_donnees_marche_globales()
+    sol_master_data = analyser_solana_master_live()
 
     # 1. Setup A+ Royal
     setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
@@ -980,7 +993,7 @@ def bloc_live_auto_actualise():
             unsafe_allow_html=True,
         )
 
-    # 2. Synchronisation des profils
+    # 2. Synchronisation des profils radar
     donnees_tous_profils = {}
     for p_nom in LISTE_PROFILS:
         if p_nom not in st.session_state.memoire_par_profil:
@@ -1090,12 +1103,186 @@ def bloc_live_auto_actualise():
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. Moteur Auto-Trader
+    # 4. MOTEUR AUTO-TRADER (PROFILES + SOLANA MASTER AUTO)
     compte_actuel = charger_tous_les_comptes().get(trader_courant, compte_actif)
-    if compte_actuel.get("auto_actif", False):
 
-        def executer_moteur(compte):
-            heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
+    def executer_moteur_complet(compte):
+        heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
+
+        # A. Gestion des positions Solana Master (1M XP)
+        if "SolanaMaster_SOL/USDT" in compte.get("positions", {}):
+            pos_m = compte["positions"]["SolanaMaster_SOL/USDT"]
+            p_sol = (
+                sol_master_data["prix"]
+                if sol_master_data
+                else prix_mexc_direct.get("SOL/USDT", 0)
+            )
+            sens_m = pos_m.get("sens", "LONG")
+            entree_m = float(pos_m.get("entree", p_sol))
+            sl_m = float(pos_m.get("sl", 0))
+            tp1_m = float(pos_m.get("tp1", 0))
+            tp2_m = float(pos_m.get("tp2", 0))
+            marge_m = float(pos_m.get("marge", 50.0))
+            levier_m = float(pos_m.get("levier", 25))
+            notionnel_m = marge_m * levier_m
+            tp1_hit_m = pos_m.get("tp1_hit", False)
+
+            if "LONG" in sens_m:
+                if not tp1_hit_m and p_sol >= tp1_m:
+                    pos_m["tp1_hit"] = True
+                    pnl_60 = ((tp1_m - entree_m) / entree_m) * (
+                        notionnel_m * 0.60
+                    )
+                    compte["solde"] += pnl_60
+                    pos_m["sl"] = (
+                        entree_m + 0.50
+                    )  # Stop remonté en profit garanti
+                elif tp1_hit_m and p_sol >= tp2_m:
+                    pnl_40 = ((tp2_m - entree_m) / entree_m) * (
+                        notionnel_m * 0.40
+                    )
+                    pnl_tot = (
+                        ((tp1_m - entree_m) / entree_m) * (notionnel_m * 0.60)
+                        + pnl_40
+                    )
+                    compte["solde"] += pnl_40
+                    mettre_a_jour_ia_collective(
+                        trader_courant,
+                        "SOL/USDT",
+                        "Squeeze Breakout",
+                        True,
+                        pnl_tot,
+                    )
+                    compte["historique"].insert(
+                        0,
+                        {
+                            "strategie": "👑 Solana Master 1M XP",
+                            "paire": "SOL/USDT",
+                            "sens": sens_m,
+                            "pnl": round(pnl_tot, 2),
+                            "win": True,
+                            "date": heure_fr_trade,
+                        },
+                    )
+                    del compte["positions"]["SolanaMaster_SOL/USDT"]
+                elif p_sol <= sl_m:
+                    pnl_tot = (
+                        ((tp1_m - entree_m) / entree_m) * (notionnel_m * 0.60)
+                        if tp1_hit_m
+                        else ((sl_m - entree_m) / entree_m) * notionnel_m
+                    )
+                    compte["solde"] += (
+                        ((sl_m - entree_m) / entree_m) * (notionnel_m * 0.40)
+                        if tp1_hit_m
+                        else pnl_tot
+                    )
+                    mettre_a_jour_ia_collective(
+                        trader_courant,
+                        "SOL/USDT",
+                        "Squeeze Breakout",
+                        tp1_hit_m,
+                        pnl_tot,
+                    )
+                    compte["historique"].insert(
+                        0,
+                        {
+                            "strategie": "👑 Solana Master 1M XP",
+                            "paire": "SOL/USDT",
+                            "sens": sens_m,
+                            "pnl": round(pnl_tot, 2),
+                            "win": tp1_hit_m,
+                            "date": heure_fr_trade,
+                        },
+                    )
+                    del compte["positions"]["SolanaMaster_SOL/USDT"]
+
+            elif "SHORT" in sens_m:
+                if not tp1_hit_m and p_sol <= tp1_m:
+                    pos_m["tp1_hit"] = True
+                    pnl_60 = ((entree_m - tp1_m) / entree_m) * (
+                        notionnel_m * 0.60
+                    )
+                    compte["solde"] += pnl_60
+                    pos_m["sl"] = entree_m - 0.50
+                elif tp1_hit_m and p_sol <= tp2_m:
+                    pnl_40 = ((entree_m - tp2_m) / entree_m) * (
+                        notionnel_m * 0.40
+                    )
+                    pnl_tot = (
+                        ((entree_m - tp1_m) / entree_m) * (notionnel_m * 0.60)
+                        + pnl_40
+                    )
+                    compte["solde"] += pnl_40
+                    mettre_a_jour_ia_collective(
+                        trader_courant,
+                        "SOL/USDT",
+                        "Squeeze Breakout",
+                        True,
+                        pnl_tot,
+                    )
+                    compte["historique"].insert(
+                        0,
+                        {
+                            "strategie": "👑 Solana Master 1M XP",
+                            "paire": "SOL/USDT",
+                            "sens": sens_m,
+                            "pnl": round(pnl_tot, 2),
+                            "win": True,
+                            "date": heure_fr_trade,
+                        },
+                    )
+                    del compte["positions"]["SolanaMaster_SOL/USDT"]
+                elif p_sol >= sl_m:
+                    pnl_tot = (
+                        ((entree_m - tp1_m) / entree_m) * (notionnel_m * 0.60)
+                        if tp1_hit_m
+                        else ((entree_m - sl_m) / entree_m) * notionnel_m
+                    )
+                    compte["solde"] += (
+                        ((entree_m - sl_m) / entree_m) * (notionnel_m * 0.40)
+                        if tp1_hit_m
+                        else pnl_tot
+                    )
+                    mettre_a_jour_ia_collective(
+                        trader_courant,
+                        "SOL/USDT",
+                        "Squeeze Breakout",
+                        tp1_hit_m,
+                        pnl_tot,
+                    )
+                    compte["historique"].insert(
+                        0,
+                        {
+                            "strategie": "👑 Solana Master 1M XP",
+                            "paire": "SOL/USDT",
+                            "sens": sens_m,
+                            "pnl": round(pnl_tot, 2),
+                            "win": tp1_hit_m,
+                            "date": heure_fr_trade,
+                        },
+                    )
+                    del compte["positions"]["SolanaMaster_SOL/USDT"]
+
+        # B. Prise automatique du Solana Master si mode activé
+        if compte.get("solana_master_auto", False) and sol_master_data:
+            bo = sol_master_data.get("breakout_signal")
+            if bo and "SolanaMaster_SOL/USDT" not in compte.get("positions", {}):
+                compte["positions"]["SolanaMaster_SOL/USDT"] = {
+                    "strategie": "👑 Solana Master 1M XP",
+                    "sens": bo["sens"],
+                    "motif": "Squeeze Breakout (Autopilote)",
+                    "entree": bo["entree"],
+                    "sl": bo["sl"],
+                    "tp1": bo["tp1"],
+                    "tp2": bo["tp2"],
+                    "marge": 50.0,
+                    "levier": bo["levier"],
+                    "tp1_hit": False,
+                    "date_open": heure_fr_trade,
+                }
+
+        # C. Exécution classique du radar multi-profils
+        if compte.get("auto_actif", False):
             for p_nom in LISTE_PROFILS:
                 levier_strat = leviers_profils[p_nom]
                 for d in donnees_tous_profils.get(p_nom, []):
@@ -1152,51 +1339,29 @@ def bloc_live_auto_actualise():
                                 )
                                 del compte["positions"][cle_pos]
                             elif high >= sl:
-                                if pos.get("tp1_hit", False):
-                                    pnl_tot = (
-                                        (p_entree - tp1) / p_entree
-                                    ) * (notionnel * 0.5)
-                                    mettre_a_jour_ia_collective(
-                                        trader_courant,
-                                        paire,
-                                        motif_fam,
-                                        True,
-                                        pnl_tot,
-                                    )
-                                    compte["historique"].insert(
-                                        0,
-                                        {
-                                            "strategie": p_nom,
-                                            "paire": paire,
-                                            "sens": sens,
-                                            "pnl": round(pnl_tot, 2),
-                                            "win": True,
-                                            "date": heure_fr_trade,
-                                        },
-                                    )
-                                else:
-                                    pnl = (
-                                        (p_entree - sl) / p_entree
-                                    ) * notionnel
+                                pnl = (
+                                    (p_entree - sl) / p_entree
+                                ) * notionnel if not pos.get("tp1_hit", False) else ((p_entree - tp1) / p_entree) * (notionnel * 0.5)
+                                if not pos.get("tp1_hit", False):
                                     compte["solde"] += pnl
-                                    mettre_a_jour_ia_collective(
-                                        trader_courant,
-                                        paire,
-                                        motif_fam,
-                                        False,
-                                        pnl,
-                                    )
-                                    compte["historique"].insert(
-                                        0,
-                                        {
-                                            "strategie": p_nom,
-                                            "paire": paire,
-                                            "sens": sens,
-                                            "pnl": round(pnl, 2),
-                                            "win": False,
-                                            "date": heure_fr_trade,
-                                        },
-                                    )
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    pos.get("tp1_hit", False),
+                                    pnl,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl, 2),
+                                        "win": pos.get("tp1_hit", False),
+                                        "date": heure_fr_trade,
+                                    },
+                                )
                                 del compte["positions"][cle_pos]
 
                         elif "LONG" in sens:
@@ -1235,49 +1400,29 @@ def bloc_live_auto_actualise():
                                 )
                                 del compte["positions"][cle_pos]
                             elif low <= sl:
-                                if pos.get("tp1_hit", False):
-                                    pnl_tot = (
-                                        (tp1 - p_entree) / p_entree
-                                    ) * (notionnel * 0.5)
-                                    mettre_a_jour_ia_collective(
-                                        trader_courant,
-                                        paire,
-                                        motif_fam,
-                                        True,
-                                        pnl_tot,
-                                    )
-                                    compte["historique"].insert(
-                                        0,
-                                        {
-                                            "strategie": p_nom,
-                                            "paire": paire,
-                                            "sens": sens,
-                                            "pnl": round(pnl_tot, 2),
-                                            "win": True,
-                                            "date": heure_fr_trade,
-                                        },
-                                    )
-                                else:
-                                    pnl = ((sl - p_entree) / p_entree) * notionnel
+                                pnl = (
+                                    (sl - p_entree) / p_entree
+                                ) * notionnel if not pos.get("tp1_hit", False) else ((tp1 - p_entree) / p_entree) * (notionnel * 0.5)
+                                if not pos.get("tp1_hit", False):
                                     compte["solde"] += pnl
-                                    mettre_a_jour_ia_collective(
-                                        trader_courant,
-                                        paire,
-                                        motif_fam,
-                                        False,
-                                        pnl,
-                                    )
-                                    compte["historique"].insert(
-                                        0,
-                                        {
-                                            "strategie": p_nom,
-                                            "paire": paire,
-                                            "sens": sens,
-                                            "pnl": round(pnl, 2),
-                                            "win": False,
-                                            "date": heure_fr_trade,
-                                        },
-                                    )
+                                mettre_a_jour_ia_collective(
+                                    trader_courant,
+                                    paire,
+                                    motif_fam,
+                                    pos.get("tp1_hit", False),
+                                    pnl,
+                                )
+                                compte["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": p_nom,
+                                        "paire": paire,
+                                        "sens": sens,
+                                        "pnl": round(pnl, 2),
+                                        "win": pos.get("tp1_hit", False),
+                                        "date": heure_fr_trade,
+                                    },
+                                )
                                 del compte["positions"][cle_pos]
 
                     elif len(compte["positions"]) < 4 and d.get(
@@ -1297,9 +1442,9 @@ def bloc_live_auto_actualise():
                             "date_open": heure_fr_trade,
                         }
 
-        mettre_a_jour_un_compte(trader_courant, executer_moteur)
+    mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
-    # 5. ONGLETS PRINCIPAUX DU DASHBOARD
+    # 5. ONGLETS DU COCKPIT
     tab_auto, tab_radar, tab_sol_master, tab_ia, tab_classement, tab_calc = (
         st.tabs(
             [
@@ -1314,10 +1459,48 @@ def bloc_live_auto_actualise():
     )
 
     # ======================================================
-    # 👑 ONGLET SOLANA MASTER DUAL-ENGINE (1M XP)
+    # 👑 ONGLET SOLANA MASTER DUAL-ENGINE (AUTO / MANUEL)
     # ======================================================
     with tab_sol_master:
+        c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
         sol_data = analyser_solana_master_live()
+
+        # En-tête avec bouton Auto/Manuel
+        col_sm1, col_sm2 = st.columns([3, 2])
+        with col_sm1:
+            st.markdown(
+                f"#### 👑 Solana Master <span class='user-badge'>👤 {trader_courant}</span>",
+                unsafe_allow_html=True,
+            )
+        with col_sm2:
+            mode_auto_sol = st.toggle(
+                "⚡ AUTOPILOTE SOLANA",
+                value=c_fresh.get("solana_master_auto", False),
+                key="toggle_solana_master_auto_switch",
+            )
+            if mode_auto_sol != c_fresh.get("solana_master_auto", False):
+
+                def set_auto_sol(c):
+                    c["solana_master_auto"] = mode_auto_sol
+
+                mettre_a_jour_un_compte(trader_courant, set_auto_sol)
+                st.rerun()
+
+        if mode_auto_sol:
+            st.markdown(
+                """<div style="background-color:rgba(20,241,149,0.12); padding:8px; border-radius:6px; border:1px solid #14F195; font-size:13px; color:#14F195; font-weight:bold; margin-bottom:8px;">
+                🟢 AUTOPILOTE ACTIF : L'IA prend automatiquement tous les Breakouts 1M XP dès leur détection.
+            </div>""",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """<div style="background-color:#0D1117; padding:8px; border-radius:6px; border:1px dashed #30363D; font-size:13px; color:#8B949E; margin-bottom:8px;">
+                ⚪ MODE MANUEL : Surveillez les alertes ci-dessous et cliquez pour ouvrir un trade.
+            </div>""",
+                unsafe_allow_html=True,
+            )
+
         if sol_data:
             p_sol = sol_data["prix"]
             sq_on = sol_data["squeeze_on"]
@@ -1336,100 +1519,87 @@ def bloc_live_auto_actualise():
                 f"""
             <div class="sol-master-card">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="color:#14F195; font-size:18px; font-weight:bold;">👑 SOLANA MASTER DUAL-ENGINE (1 000 000 XP)</span>
-                    <span style="color:#FFF; font-weight:bold; font-size:16px;">SOL : {formater_prix(p_sol)} USDT</span>
+                    <span style="color:#14F195; font-size:17px; font-weight:bold;">SOLANA / USDT (MEXC FUTURES)</span>
+                    <span style="color:#FFF; font-weight:bold; font-size:16px;">{formater_prix(p_sol)} $</span>
                 </div>
-                <hr style="border-color:#14F195; margin:8px 0;">
-                <b>Régime Détecté (15m) :</b> <span style="color:{regime_color}; font-weight:bold;">{regime_titre}</span><br>
-                📊 <b>Momentum :</b> <span style="color:{'#00E676' if mom >= 0 else '#FF1744'}; font-weight:bold;">{mom:+.3f}</span> | ⚡ <b>ATR (15m) :</b> {atr:.2f} $ | 📉 <b>EMA 50 :</b> {sol_data['ema50']:.2f} $
+                <hr style="border-color:#14F195; margin:6px 0;">
+                <b>Régime Détecté :</b> <span style="color:{regime_color}; font-weight:bold;">{regime_titre}</span><br>
+                📊 <b>Momentum :</b> <span style="color:{'#00E676' if mom >= 0 else '#FF1744'}; font-weight:bold;">{mom:+.3f}</span> | ⚡ <b>ATR 15m :</b> {atr:.2f} $ | 📉 <b>EMA 50 :</b> {sol_data['ema50']:.2f} $
             </div>
             """,
                 unsafe_allow_html=True,
             )
 
-            # MODE 1 : GRID MAKER (COMPRESSION)
+            # MODE 1 : GRID MAKER (0% FEES)
             if sq_on:
                 st.markdown(
-                    f"#### 🟢 Niveaux Limit Maker Actifs (Écart {sol_data['grid_step']:.2f}% | 0% Frais MEXC) :"
+                    f"#### 🟢 Grille Maker 0.35% (Ordres Post-Only MEXC) :"
                 )
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
-                    st.markdown("<b>🛒 Ordres d'Achat Maker (Post-Only) :</b>", unsafe_allow_html=True)
+                    st.markdown("<b>🛒 Ordres Achat Limit :</b>", unsafe_allow_html=True)
                     for lvl in sol_data["grid_levels"]:
                         st.markdown(
                             f"<span class='grid-badge-buy'>Achat L{lvl['lvl']} : {lvl['buy']} $</span> (-{lvl['lvl']*0.35:.2f}%)",
                             unsafe_allow_html=True,
                         )
                 with col_g2:
-                    st.markdown("<b>💰 Ordres de Vente Maker (Post-Only) :</b>", unsafe_allow_html=True)
+                    st.markdown("<b>💰 Ordres Vente Limit :</b>", unsafe_allow_html=True)
                     for lvl in sol_data["grid_levels"]:
                         st.markdown(
                             f"<span class='grid-badge-sell'>Vente L{lvl['lvl']} : {lvl['sell']} $</span> (+{lvl['lvl']*0.35:.2f}%)",
                             unsafe_allow_html=True,
                         )
-                st.caption(
-                    "💡 *En compression, le bot récolte chaque micro-oscillation de 0.35% en ordre Maker 0% fees.*"
-                )
 
-            # MODE 2 : SQUEEZE BREAKOUT (EXPANSION)
+            # MODE 2 : SQUEEZE BREAKOUT (MANUEL / AUTO)
             if bo:
                 st.markdown(
                     f"""
                 <div class="{'alert-card-long' if 'LONG' in bo['sens'] else 'alert-card-short'}">
                     <b>🚀 SIGNAL BREAKOUT 1M XP : SOLANA {bo['sens']} (Levier x{bo['levier']})</b><br>
-                    🎯 <b>Entrée Optimale :</b> <span class="opt-price">{formater_prix(bo['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(bo['sl'])} USDT<br>
-                    💰 <b>TP1 (2.2R - Sécurise 60%) :</b> {formater_prix(bo['tp1'])} USDT<br>
-                    👑 <b>TP2 Mega Runner (4.5R - 40%) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(bo['tp2'])} USDT</span>
+                    🎯 <b>Entrée :</b> <span class="opt-price">{formater_prix(bo['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(bo['sl'])} USDT<br>
+                    💰 <b>TP1 (2.2R - 60%) :</b> {formater_prix(bo['tp1'])} USDT | 👑 <b>TP2 Runner (4.5R - 40%) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(bo['tp2'])} USDT</span>
                 </div>
                 """,
                     unsafe_allow_html=True,
                 )
 
-                if st.button(
-                    f"⚡ Simuler ce Breakout sur le compte de {trader_courant}",
-                    key="btn_copy_sol_master",
-                ):
+                if not mode_auto_sol:
+                    if st.button(
+                        f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
+                        key="btn_manual_take_sol_master",
+                    ):
 
-                    def ajouter_pos_master(c):
-                        c["positions"]["SolanaMaster_SOL/USDT"] = {
-                            "strategie": "👑 Solana Master 1M XP",
-                            "sens": bo["sens"],
-                            "motif": "Squeeze Breakout 15m (1M XP)",
-                            "entree": bo["entree"],
-                            "sl": bo["sl"],
-                            "tp1": bo["tp1"],
-                            "tp2": bo["tp2"],
-                            "marge": 50.0,
-                            "levier": bo["levier"],
-                            "tp1_hit": False,
-                            "date_open": obtenir_date_heure_paris("%H:%M:%S"),
-                        }
+                        def ajouter_pos_manuel(c):
+                            c["positions"]["SolanaMaster_SOL/USDT"] = {
+                                "strategie": "👑 Solana Master 1M XP",
+                                "sens": bo["sens"],
+                                "motif": "Squeeze Breakout (Manuel)",
+                                "entree": bo["entree"],
+                                "sl": bo["sl"],
+                                "tp1": bo["tp1"],
+                                "tp2": bo["tp2"],
+                                "marge": 50.0,
+                                "levier": bo["levier"],
+                                "tp1_hit": False,
+                                "date_open": obtenir_date_heure_paris(
+                                    "%H:%M:%S"
+                                ),
+                            }
 
-                    mettre_a_jour_un_compte(trader_courant, ajouter_pos_master)
-                    st.success(
-                        f"✅ Breakout Solana enregistré pour {trader_courant} !"
-                    )
-                    st.rerun()
+                        mettre_a_jour_un_compte(
+                            trader_courant, ajouter_pos_manuel
+                        )
+                        st.success(
+                            f"✅ Position Solana Master ouverte pour {trader_courant} !"
+                        )
+                        st.rerun()
             elif not sq_on and not bo:
                 st.info(
-                    "⚪ Marché en transition : en attente du prochain Squeeze ou Breakout."
-                )
-
-            # Fiche ADN 1M XP
-            with st.expander("🧬 ADN Mathématique du Modèle 1M XP"):
-                st.markdown(
-                    """
-                * **Écartement Grille Maker :** `0.35 %` (Post-Only 0% Fees)
-                * **Bandes de Bollinger :** `1.7 StdDev` | **Keltner :** `1.7 ATR`
-                * **Ratio TP1 :** `2.2 R` (Sécurise 60% + Stop en profit)
-                * **Ratio TP2 Runner :** `4.5 R` (Laisse courir 40% de la position)
-                * **Score de Calmar :** `110.43` | **Drawdown Testé :** `-1.46%`
-                """
+                    "⚪ Marché en transition : surveillance du prochain Squeeze ou Breakout."
                 )
         else:
-            st.warning(
-                "⏳ Connexion au flux MEXC Solana en cours... Actualisation..."
-            )
+            st.warning("⏳ Connexion au flux MEXC Solana...")
 
     with tab_auto:
         c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
@@ -1444,9 +1614,9 @@ def bloc_live_auto_actualise():
 
         with col_t2:
             nouvel_etat = st.toggle(
-                "⚡ ACTIVER L'AUTO",
+                "⚡ AUTO MULTI-RADAR",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_master_v7",
+                key="toggle_auto_live_radar_v8",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1487,15 +1657,16 @@ def bloc_live_auto_actualise():
         if c_fresh.get("historique"):
             st.markdown("#### 📜 Derniers Trades Clôturés :")
             st.dataframe(
-                pd.DataFrame(c_fresh["historique"][:5]), hide_index=True
+                pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v7"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v8"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
                 c["capital_initial"] = 1000.0
                 c["auto_actif"] = False
+                c["solana_master_auto"] = False
                 c["positions"] = {}
                 c["historique"] = []
 
