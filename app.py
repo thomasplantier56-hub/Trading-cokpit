@@ -62,7 +62,7 @@ st.markdown(
     .mini-card-scalping { background-color: #140F04; border-radius: 6px; padding: 8px; border-top: 3px solid #FF9100; margin-bottom: 6px; }
     .mini-card-ultrascalp { background-color: #140508; border-radius: 6px; padding: 8px; border-top: 3px solid #FF1744; margin-bottom: 6px; }
     
-    .pos-card { background-color: #151A24; border-radius: 6px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
+    .pos-card { background-color: #151A24; border-radius: 8px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
     .alert-card-long { background-color: #04140B; border-radius: 6px; padding: 10px; border-left: 4px solid #00E676; margin-bottom: 8px; }
     .alert-card-short { background-color: #170508; border-radius: 6px; padding: 10px; border-left: 4px solid #FF1744; margin-bottom: 8px; }
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
@@ -130,7 +130,7 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
+# 👥 GESTION DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -259,7 +259,8 @@ def formater_prix(p):
         return f"{p:.2f}"
 
 
-@st.cache_data(ttl=120)
+# 🛡️ show_spinner=False pour éliminer le bug de thread de Streamlit
+@st.cache_data(ttl=120, show_spinner=False)
 def charger_news_statiques():
     try:
         flux = feedparser.parse(
@@ -284,7 +285,7 @@ def charger_news_statiques():
         return ["<span class='tag-neu'>MARCHE</span> Synchronisation flux..."]
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=60, show_spinner=False)
 def charger_fear_and_greed():
     try:
         res = requests.get(
@@ -297,7 +298,7 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=5, show_spinner=False)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -339,7 +340,7 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
             df_1 = (
                 df_1m[paire].dropna()
                 if len(PAIRES_RADAR) > 1
-                else data_1m.dropna()
+                else df_1m.dropna()
             )
 
             if len(df_15) < 30 or len(df_1) < 20:
@@ -507,7 +508,6 @@ def analyser_profil(profil_court, donnees_globales):
             high_s_1m = float(df_1["High"].iloc[-9:-2].max())
             low_s_1m = float(df_1["Low"].iloc[-9:-2].min())
 
-            # Calculs RSI 1m & 15m
             d = df_1["Close"].diff()
             g = d.where(d > 0, 0).rolling(7).mean()
             l = (-d.where(d < 0, 0)).rolling(7).mean()
@@ -700,7 +700,7 @@ def analyser_profil(profil_court, donnees_globales):
                     "SL": sl,
                     "TP1": tp1,
                     "TP2": tp2,
-                    "RSI": f"{rsi_val:.1f}",  # 🌟 RSI INCLUS ET GARANTI ICI !
+                    "RSI": f"{rsi_val:.1f}",
                     "Intervalle": "1m",
                 }
             )
@@ -772,8 +772,17 @@ with col_h1:
 with col_h2:
     st.caption(f"🕒 Heure de Paris : **{obtenir_date_heure_paris()}**")
 
-news_list = charger_news_statiques()
-fg_score, fg_sentiment = charger_fear_and_greed()
+# Sécurisation des appels API de news et fear/greed
+try:
+    news_list = charger_news_statiques()
+except Exception:
+    news_list = ["<span class='tag-neu'>MARCHE</span> Flux synchronisé."]
+
+try:
+    fg_score, fg_sentiment = charger_fear_and_greed()
+except Exception:
+    fg_score, fg_sentiment = 50, "Neutre"
+
 st.markdown(
     f"""
 <div class="news-box">
@@ -841,7 +850,7 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ SANS AUCUN CRASH
+# 🌟 FRAGMENT AUTO-ACTUALISÉ SANS AUCUN CRASH DE THREAD
 # ==========================================================
 @st.fragment(run_every="10s")
 def bloc_live_auto_actualise():
@@ -1219,7 +1228,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ ACTIVER L'AUTO",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_smooth_final_v5",
+                key="toggle_auto_live_smooth_final_v6",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1263,7 +1272,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:5]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v5"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v6"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1316,7 +1325,7 @@ def bloc_live_auto_actualise():
                     "Prix Actuel": formater_prix(prix_reel_mexc),
                     "Statut": statut,
                     "Range 15m": d.get("Range_Str", "N/A"),
-                    "RSI": d.get("RSI", "50.0"),  # 🌟 SÉCURISÉ AVEC .GET() !
+                    "RSI": d.get("RSI", "50.0"),
                 }
             )
         st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
@@ -1326,7 +1335,8 @@ def bloc_live_auto_actualise():
         st.markdown(
             f"""
         <div class="xp-card">
-            <b>🏆 Niveau : <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP Partagés)<br>
+            <h4>🏆 Niveau Collectif : <span style="color:#00E676;">{ia_stats['niveau']}</span></h4>
+            <h2>⭐ {ia_stats['xp_total']} XP Partagés</h2>
             <small>Chaque trade améliore les filtres de tout le groupe.</small>
         </div>
         """,
