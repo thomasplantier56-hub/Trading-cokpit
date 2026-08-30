@@ -24,14 +24,6 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
     return datetime.datetime.now(TZ_PARIS).strftime(format_str)
 
 
-# Auto-Refresh
-try:
-    from streamlit_autorefresh import st_autorefresh
-
-    has_autorefresh = True
-except ImportError:
-    has_autorefresh = False
-
 # Configuration Streamlit Mobile First & Dark Mode
 st.set_page_config(
     page_title="Cockpit Trader Pro Live",
@@ -62,7 +54,7 @@ st.markdown(
     .mini-card-scalping { background-color: #140F04; border-radius: 6px; padding: 8px; border-top: 3px solid #FF9100; margin-bottom: 6px; }
     .mini-card-ultrascalp { background-color: #140508; border-radius: 6px; padding: 8px; border-top: 3px solid #FF1744; margin-bottom: 6px; }
     
-    .pos-card { background-color: #151A24; border-radius: 8px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
+    .pos-card { background-color: #0D1117; border-radius: 6px; padding: 10px; border: 1px solid #00E676; margin-bottom: 6px; }
     .alert-card-long { background-color: #04140B; border-radius: 6px; padding: 10px; border-left: 4px solid #00E676; margin-bottom: 8px; }
     .alert-card-short { background-color: #170508; border-radius: 6px; padding: 10px; border-left: 4px solid #FF1744; margin-bottom: 8px; }
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
@@ -92,7 +84,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES (0 BLOCAGE)
+# ⚡ FLUX DE PRIX DIRECT (SANS MULTI-THREADING)
 # ==========================================================
 def obtenir_prix_live_multi_sources():
     prix_dict = {}
@@ -130,7 +122,7 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES TRADERS
+# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -193,7 +185,7 @@ def charger_experience_ia_collective():
         "cooldowns": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "pertes_consecutives": {"SMC": 0, "Momentum": 0, "Tendance": 0},
         "lecons_apprises": [
-            "Cerveau collectif prêt. Ancrage 15m ➔ MSS 1m actif."
+            "Cerveau collectif prêt. Mode Mono-Thread actif."
         ],
     }
 
@@ -259,8 +251,7 @@ def formater_prix(p):
         return f"{p:.2f}"
 
 
-# 🛡️ show_spinner=False pour éliminer le bug de thread de Streamlit
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=120)
 def charger_news_statiques():
     try:
         flux = feedparser.parse(
@@ -285,7 +276,7 @@ def charger_news_statiques():
         return ["<span class='tag-neu'>MARCHE</span> Synchronisation flux..."]
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60)
 def charger_fear_and_greed():
     try:
         res = requests.get(
@@ -298,7 +289,8 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=5, show_spinner=False)
+# 🛑 SÉCURITÉ : threads=False pour bloquer la création infinie de sous-processus
+@st.cache_data(ttl=8)
 def charger_donnees_marche_globales():
     donnees = {}
     for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
@@ -310,6 +302,7 @@ def charger_donnees_marche_globales():
                 group_by="ticker",
                 auto_adjust=True,
                 progress=False,
+                threads=False,  # 🌟 EMPÊCHE LE CRASH "CANNOT START NEW THREAD" !
             )
             donnees[intervalle] = df
         except Exception:
@@ -317,9 +310,6 @@ def charger_donnees_marche_globales():
     return donnees
 
 
-# ==========================================================
-# 👑 DÉTECTION DU VRAI SETUP A+ ROYAL (AMPLITUDE 15M)
-# ==========================================================
 def detecter_setup_a_plus_du_jour(donnees_globales):
     df_15m = donnees_globales.get("15m")
     df_1m = donnees_globales.get("1m")
@@ -340,7 +330,7 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
             df_1 = (
                 df_1m[paire].dropna()
                 if len(PAIRES_RADAR) > 1
-                else df_1m.dropna()
+                else data_1m.dropna()
             )
 
             if len(df_15) < 30 or len(df_1) < 20:
@@ -448,9 +438,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
     return setups_valides[0] if setups_valides else None
 
 
-# ==========================================================
-# 🏛️ MOTEUR STRICT : ANCRAGE 15m ➔ MSS 1m ➔ RETEST FVG
-# ==========================================================
 def analyser_profil(profil_court, donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
@@ -772,17 +759,8 @@ with col_h1:
 with col_h2:
     st.caption(f"🕒 Heure de Paris : **{obtenir_date_heure_paris()}**")
 
-# Sécurisation des appels API de news et fear/greed
-try:
-    news_list = charger_news_statiques()
-except Exception:
-    news_list = ["<span class='tag-neu'>MARCHE</span> Flux synchronisé."]
-
-try:
-    fg_score, fg_sentiment = charger_fear_and_greed()
-except Exception:
-    fg_score, fg_sentiment = 50, "Neutre"
-
+news_list = charger_news_statiques()
+fg_score, fg_sentiment = charger_fear_and_greed()
 st.markdown(
     f"""
 <div class="news-box">
@@ -850,7 +828,7 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ SANS AUCUN CRASH DE THREAD
+# 🌟 FRAGMENT AUTO-ACTUALISÉ SANS AUCUN CRASH
 # ==========================================================
 @st.fragment(run_every="10s")
 def bloc_live_auto_actualise():
@@ -1335,8 +1313,7 @@ def bloc_live_auto_actualise():
         st.markdown(
             f"""
         <div class="xp-card">
-            <h4>🏆 Niveau Collectif : <span style="color:#00E676;">{ia_stats['niveau']}</span></h4>
-            <h2>⭐ {ia_stats['xp_total']} XP Partagés</h2>
+            <b>🏆 Niveau : <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP Partagés)<br>
             <small>Chaque trade améliore les filtres de tout le groupe.</small>
         </div>
         """,
