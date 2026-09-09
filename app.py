@@ -11,7 +11,7 @@ import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import yfinance as yf
 
-# Gestion du fuseau horaire France (Europe/Paris)
+# Fuseau horaire Paris
 try:
     import zoneinfo
 
@@ -24,7 +24,6 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
     return datetime.datetime.now(TZ_PARIS).strftime(format_str)
 
 
-# Configuration Streamlit Mobile First & Dark Mode
 st.set_page_config(
     page_title="Cockpit Trader Pro Live",
     page_icon="⚡",
@@ -71,7 +70,6 @@ st.markdown(
 FICHIER_COMPTES = "comptes_traders.json"
 FICHIER_IA = "experience_ia_collective.json"
 
-# 🌟 PIXEL AJOUTÉ AU RADAR ICI
 PAIRES_RADAR = [
     "SOL-USD",
     "BTC-USD",
@@ -87,22 +85,18 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES (AVEC PIXEL)
+# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES
 # ==========================================================
 def obtenir_prix_live_multi_sources():
     prix_dict = {}
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        ),
-        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     try:
         url_mexc = "https://api.mexc.com/api/v3/ticker/price"
         res = requests.get(url_mexc, headers=headers, timeout=1.5).json()
         for it in res:
             s_name = it.get("symbol", "")
-            # 🌟 PIXEL AJOUTÉ AUX FLUX DE PRIX
             for base in [
                 "SOL",
                 "BTC",
@@ -118,7 +112,7 @@ def obtenir_prix_live_multi_sources():
     except Exception:
         pass
 
-    if not prix_dict or "SOL/USDT" not in prix_dict:
+    if not prix_dict or "SOL/USDT" not in prix_dict or "PIXEL/USDT" not in prix_dict:
         try:
             url_binance = "https://api.binance.com/api/v3/ticker/price"
             res3 = requests.get(url_binance, headers=headers, timeout=1.5).json()
@@ -133,7 +127,7 @@ def obtenir_prix_live_multi_sources():
                     "BNB",
                     "PIXEL",
                 ]:
-                    if s_name == f"{base}USDT":
+                    if s_name == f"{base}USDT" and f"{base}/USDT" not in prix_dict:
                         prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
         except Exception:
             pass
@@ -142,7 +136,41 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 👥 GESTION ATOMIQUE DES COMPTES TRADERS
+# 📥 FALLBACK MEXC DIRECT POUR LES BOUGIES
+# ==========================================================
+@st.cache_data(ttl=8)
+def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=50):
+    try:
+        url = f"https://api.mexc.com/api/v3/klines?symbol={symbol_base}USDT&interval={interval}&limit={limit}"
+        res = requests.get(
+            url, headers={"User-Agent": "Mozilla/5.0"}, timeout=2
+        ).json()
+        if not res or not isinstance(res, list):
+            return None
+        df = pd.DataFrame(
+            res,
+            columns=[
+                "time",
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Volume",
+                "c_time",
+                "qav",
+            ],
+        )
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            df[col] = df[col].astype(float)
+        df["Datetime"] = pd.to_datetime(df["time"], unit="ms")
+        df.set_index("Datetime", inplace=True)
+        return df[["Open", "High", "Low", "Close", "Volume"]]
+    except Exception:
+        return None
+
+
+# ==========================================================
+# 👥 GESTION DES COMPTES ET DE L'IA
 # ==========================================================
 def charger_tous_les_comptes():
     if os.path.exists(FICHIER_COMPTES):
@@ -191,9 +219,6 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
     sauvegarder_tous_les_comptes(comptes)
 
 
-# ==========================================================
-# 🧠 CERVEAU COLLECTIF DE L'IA (1M XP)
-# ==========================================================
 def charger_experience_ia_collective():
     if os.path.exists(FICHIER_IA):
         try:
@@ -219,7 +244,7 @@ def charger_experience_ia_collective():
         },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Paire PIXEL/USDT ajoutée au radar multi-profils.",
+            "Passerelle MEXC Directe connectée pour PIXEL/USDT.",
         ],
     }
 
@@ -232,19 +257,7 @@ def sauvegarder_experience_ia_collective(ia_data):
 def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl):
     ia = charger_experience_ia_collective()
     paire = paire_brute.split("/")[0]
-
     ia["xp_total"] += 25 if win else 5
-    xp = ia["xp_total"]
-
-    if xp < 150:
-        ia["niveau"] = "Novice Quant 🥚"
-    elif xp < 500:
-        ia["niveau"] = "Collectif Initié 🥉"
-    elif xp < 1200:
-        ia["niveau"] = "Hedge Fund IA Confirmé 🥈"
-    else:
-        ia["niveau"] = "Maître Quant Suprême 🥇"
-
     score_p = ia["scores_paires"].get(paire, 1.0)
     heure_str = obtenir_date_heure_paris("%H:%M")
 
@@ -346,34 +359,14 @@ def charger_donnees_marche_globales():
 
 
 # ==========================================================
-# 👑 SCANNER SOLANA MASTER 1M XP (DUAL-ENGINE 15M)
+# 👑 SCANNER SOLANA MASTER 1M XP
 # ==========================================================
 @st.cache_data(ttl=6)
 def analyser_solana_master_live():
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        url = "https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=15m&limit=45"
-        res = requests.get(url, headers=headers, timeout=2).json()
-        if not res or not isinstance(res, list):
+        df = obtenir_bougies_mexc_direct("SOL", "15m", 45)
+        if df is None or len(df) < 25:
             return None
-
-        df = pd.DataFrame(
-            res,
-            columns=[
-                "time",
-                "Open",
-                "High",
-                "Low",
-                "Close",
-                "Volume",
-                "close_time",
-                "qav",
-            ],
-        )
-        for col in ["Open", "High", "Low", "Close", "Volume"]:
-            df[col] = df[col].astype(float)
-        df["Datetime"] = pd.to_datetime(df["time"], unit="ms")
-        df.set_index("Datetime", inplace=True)
 
         BB_MULT = 1.7
         KC_MULT = 1.7
@@ -397,7 +390,6 @@ def analyser_solana_master_live():
         df["Squeeze_ON"] = (df["BB_Lower"] > df["KC_Lower"]) & (
             df["BB_Upper"] < df["KC_Upper"]
         )
-
         val = df["Close"] - (
             (df["High"].rolling(20).max() + df["Low"].rolling(20).min()) / 2.0
             + df["SMA20"]
@@ -406,8 +398,6 @@ def analyser_solana_master_live():
         df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
 
         last_c = df.iloc[-1]
-        prev_c = df.iloc[-2]
-
         p = float(last_c["Close"])
         atr = float(last_c["ATR"])
         sq_on = bool(last_c["Squeeze_ON"])
@@ -465,7 +455,6 @@ def analyser_solana_master_live():
 def detecter_setup_a_plus_du_jour(donnees_globales):
     df_15m = donnees_globales.get("15m")
     df_1m = donnees_globales.get("1m")
-
     if df_15m is None or df_1m is None:
         return None
 
@@ -475,15 +464,28 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
         try:
             df_15 = (
                 df_15m[paire].dropna()
-                if len(PAIRES_RADAR) > 1
-                else df_15m.dropna()
+                if (
+                    isinstance(df_15m.columns, pd.MultiIndex)
+                    and paire in df_15m.columns.levels[0]
+                )
+                else None
             )
             df_1 = (
                 df_1m[paire].dropna()
-                if len(PAIRES_RADAR) > 1
-                else df_1m.dropna()
+                if (
+                    isinstance(df_1m.columns, pd.MultiIndex)
+                    and paire in df_1m.columns.levels[0]
+                )
+                else None
             )
-            if len(df_15) < 30 or len(df_1) < 20:
+
+            # Fallback MEXC si absent sur Yahoo Finance (ex: PIXEL)
+            if df_15 is None or len(df_15) < 20:
+                df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
+            if df_1 is None or len(df_1) < 20:
+                df_1 = obtenir_bougies_mexc_direct(nom_court, "1m", 45)
+
+            if df_15 is None or df_1 is None or len(df_15) < 20 or len(df_1) < 20:
                 continue
 
             prix = float(df_1["Close"].iloc[-1])
@@ -594,8 +596,6 @@ def analyser_profil(profil_court, donnees_globales):
 
     data_15m = donnees_globales.get("15m")
     data_1m = donnees_globales.get("1m")
-    if data_1m is None or data_15m is None:
-        return []
 
     resultats = []
     for paire in PAIRES_RADAR:
@@ -603,15 +603,30 @@ def analyser_profil(profil_court, donnees_globales):
         try:
             df_15 = (
                 data_15m[paire].dropna()
-                if len(PAIRES_RADAR) > 1
-                else data_15m.dropna()
+                if (
+                    data_15m is not None
+                    and isinstance(data_15m.columns, pd.MultiIndex)
+                    and paire in data_15m.columns.levels[0]
+                )
+                else None
             )
             df_1 = (
                 data_1m[paire].dropna()
-                if len(PAIRES_RADAR) > 1
-                else data_1m.dropna()
+                if (
+                    data_1m is not None
+                    and isinstance(data_1m.columns, pd.MultiIndex)
+                    and paire in data_1m.columns.levels[0]
+                )
+                else None
             )
-            if len(df_15) < 20 or len(df_1) < 25:
+
+            # 🌟 FALLBACK DIRECT MEXC POUR PIXEL OU AUTRES ALTCOINS
+            if df_15 is None or len(df_15) < 20:
+                df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
+            if df_1 is None or len(df_1) < 20:
+                df_1 = obtenir_bougies_mexc_direct(nom_court, "1m", 45)
+
+            if df_15 is None or df_1 is None or len(df_15) < 15 or len(df_1) < 15:
                 continue
 
             high_s_15 = float(df_15["High"].iloc[-16:-1].max())
@@ -685,10 +700,7 @@ def analyser_profil(profil_court, donnees_globales):
                     and mss_baissier
                     and gros_corps
                 ):
-                    signal, motif = (
-                        "🔴 SHORT",
-                        "MSS 15m + Sweep Majeur",
-                    )
+                    signal, motif = "🔴 SHORT", "MSS 15m + Sweep Majeur"
                     opt_p = low_s_1m
                     dist = max(high - opt_p + (0.05 * atr_1m), 0.40 * atr_1m)
                     sl = opt_p + dist
@@ -700,10 +712,7 @@ def analyser_profil(profil_court, donnees_globales):
                     and mss_haussier
                     and gros_corps
                 ):
-                    signal, motif = (
-                        "🟢 LONG",
-                        "MSS 15m + Sweep Majeur",
-                    )
+                    signal, motif = "🟢 LONG", "MSS 15m + Sweep Majeur"
                     opt_p = high_s_1m
                     dist = max(opt_p - low + (0.05 * atr_1m), 0.40 * atr_1m)
                     sl = opt_p - dist
@@ -748,10 +757,7 @@ def analyser_profil(profil_court, donnees_globales):
                         and mss_baissier
                         and (fvg_bear_1m or gros_corps)
                     ):
-                        signal, motif = (
-                            "🔴 SHORT",
-                            "MSS 1m + Momentum",
-                        )
+                        signal, motif = "🔴 SHORT", "MSS 1m + Momentum"
                         opt_p = prix
                         dist = max(
                             high - prix + (0.04 * atr_1m), 0.30 * atr_1m
@@ -764,10 +770,7 @@ def analyser_profil(profil_court, donnees_globales):
                         and mss_haussier
                         and (fvg_bull_1m or gros_corps)
                     ):
-                        signal, motif = (
-                            "🟢 LONG",
-                            "MSS 1m + Momentum",
-                        )
+                        signal, motif = "🟢 LONG", "MSS 1m + Momentum"
                         opt_p = prix
                         dist = max(prix - low + (0.04 * atr_1m), 0.30 * atr_1m)
                         sl = prix - dist
@@ -776,37 +779,28 @@ def analyser_profil(profil_court, donnees_globales):
 
             else:
                 motif_famille = "SMC"
-                if atr_1m >= 0.08:
-                    if (
-                        (sweep_15_h or prix < ema_50_15)
-                        and mss_baissier
-                        and fvg_bear_1m
-                    ):
-                        signal, motif = (
-                            "🔴 SHORT",
-                            "Ancrage 15m ➔ FVG 1m",
-                        )
-                        opt_p = float(df_1["Low"].iloc[-3])
-                        dist = max(
-                            high - opt_p + (0.04 * atr_1m), 0.25 * atr_1m
-                        )
-                        sl = opt_p + dist
-                        tp1 = opt_p - (1.8 * dist)
-                        tp2 = opt_p - (3.8 * dist)
-                    elif (
-                        (sweep_15_l or prix > ema_50_15)
-                        and mss_haussier
-                        and fvg_bull_1m
-                    ):
-                        signal, motif = (
-                            "🟢 LONG",
-                            "Ancrage 15m ➔ FVG 1m",
-                        )
-                        opt_p = float(df_1["High"].iloc[-3])
-                        dist = max(opt_p - low + (0.04 * atr_1m), 0.25 * atr_1m)
-                        sl = opt_p - dist
-                        tp1 = opt_p + (1.8 * dist)
-                        tp2 = opt_p + (3.8 * dist)
+                if (
+                    (sweep_15_h or prix < ema_50_15)
+                    and mss_baissier
+                    and fvg_bear_1m
+                ):
+                    signal, motif = "🔴 SHORT", "Ancrage 15m ➔ FVG 1m"
+                    opt_p = float(df_1["Low"].iloc[-3])
+                    dist = max(high - opt_p + (0.04 * atr_1m), 0.25 * atr_1m)
+                    sl = opt_p + dist
+                    tp1 = opt_p - (1.8 * dist)
+                    tp2 = opt_p - (3.8 * dist)
+                elif (
+                    (sweep_15_l or prix > ema_50_15)
+                    and mss_haussier
+                    and fvg_bull_1m
+                ):
+                    signal, motif = "🟢 LONG", "Ancrage 15m ➔ FVG 1m"
+                    opt_p = float(df_1["High"].iloc[-3])
+                    dist = max(opt_p - low + (0.04 * atr_1m), 0.25 * atr_1m)
+                    sl = opt_p - dist
+                    tp1 = opt_p + (1.8 * dist)
+                    tp2 = opt_p + (3.8 * dist)
 
             en_cooldown = ts_actuel < ia_data.get("cooldowns", {}).get(
                 motif_famille, 0
@@ -1472,7 +1466,7 @@ def bloc_live_auto_actualise():
     )
 
     # ======================================================
-    # 👑 ONGLET SOLANA MASTER DUAL-ENGINE (AUTO / MANUEL)
+    # 👑 ONGLET SOLANA MASTER DUAL-ENGINE
     # ======================================================
     with tab_sol_master:
         c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
@@ -1488,7 +1482,7 @@ def bloc_live_auto_actualise():
             mode_auto_sol = st.toggle(
                 "⚡ AUTOPILOTE SOLANA",
                 value=c_fresh.get("solana_master_auto", False),
-                key="toggle_solana_master_auto_switch_v10",
+                key="toggle_solana_master_auto_switch_v11",
             )
             if mode_auto_sol != c_fresh.get("solana_master_auto", False):
 
@@ -1579,7 +1573,7 @@ def bloc_live_auto_actualise():
                 if not mode_auto_sol:
                     if st.button(
                         f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
-                        key="btn_manual_take_sol_master_v10",
+                        key="btn_manual_take_sol_master_v11",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -1629,7 +1623,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ AUTO MULTI-RADAR",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v10",
+                key="toggle_auto_live_radar_v11",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1675,7 +1669,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v10"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v11"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1712,26 +1706,35 @@ def bloc_live_auto_actualise():
                     unsafe_allow_html=True,
                 )
 
-        donnees_affichees = donnees_tous_profils.get(profil_cle, [])
+        donnees_dict = {
+            d["Paire"]: d for d in donnees_tous_profils.get(profil_cle, [])
+        }
         lignes_tableau = []
-        for d in donnees_affichees:
-            paire = d.get("Paire", "")
+
+        # 🌟 GARANTIT L'AFFICHAGE DE TOUTES LES PAIRES (Y COMPRIS PIXEL)
+        for paire_raw in PAIRES_RADAR:
+            paire_nom = f"{paire_raw.split('-')[0]}/USDT"
+            d = donnees_dict.get(paire_nom, {})
+
             statut = (
-                memoire_active[paire]["signal"]
-                if paire in memoire_active
+                memoire_active[paire_nom]["signal"]
+                if paire_nom in memoire_active
                 else "VEILLE ⚪"
             )
-            prix_reel_mexc = prix_mexc_direct.get(paire, d.get("Prix", 0))
+            prix_reel_mexc = prix_mexc_direct.get(
+                paire_nom, d.get("Prix", "N/A")
+            )
 
             lignes_tableau.append(
                 {
-                    "Paire": paire,
+                    "Paire": paire_nom,
                     "Prix Actuel": formater_prix(prix_reel_mexc),
                     "Statut": statut,
-                    "Range 15m": d.get("Range_Str", "N/A"),
+                    "Range 15m": d.get("Range_Str", "Calcul..."),
                     "RSI": d.get("RSI", "50.0"),
                 }
             )
+
         st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
     with tab_ia:
@@ -1824,5 +1827,5 @@ def bloc_live_auto_actualise():
             )
 
 
-# Lancement du fragment fluide
+# Lancement du fragment
 bloc_live_auto_actualise()
