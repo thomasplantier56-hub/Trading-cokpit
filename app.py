@@ -113,7 +113,7 @@ def obtenir_prix_live_multi_sources():
             res3 = requests.get(url_binance, headers=headers, timeout=1.5).json()
             for it in res3:
                 s_name = it.get("symbol", "")
-                for base in ["SOL", "BTC", "ETH", "XRP", "ZEC", "BNB"]:
+                for base in ["SOL", "BTC", "ETH", "XRP", "PIXEL", "ZEC", "BNB"]:
                     if s_name == f"{base}USDT":
                         prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
         except Exception:
