@@ -78,7 +78,7 @@ PAIRES_RADAR = [
     "ETH-USD",
     "XRP-USD",
     "ZEC-USD",
-    "PIPPIN-USD",
+    "PIXEL-USD",
     "BNB-USD",
 ]
 LISTE_PROFILS = ["Conservateur", "Intraday", "Scalping 1m", "Ultra-Scalp"]
@@ -101,7 +101,7 @@ def obtenir_prix_live_multi_sources():
         res = requests.get(url_mexc, headers=headers, timeout=1.5).json()
         for it in res:
             s_name = it.get("symbol", "")
-            for base in ["SOL", "BTC", "ETH", "XRP", "ZEC", "PIPPIN", "BNB"]:
+            for base in ["SOL", "BTC", "ETH", "XRP", "ZEC", "PIXEL", "BNB"]:
                 if s_name == f"{base}USDT":
                     prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
     except Exception:
