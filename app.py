@@ -25,13 +25,12 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
 
 
 st.set_page_config(
-    page_title="Cockpit Trader Pro Live - Multi-Timeframe",
+    page_title="Cockpit Trader Pro Live",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# Style Custom avec Tooltips Interactifs au Survol
 st.markdown(
     """
 <style>
@@ -63,38 +62,6 @@ st.markdown(
     .alert-card-short { background-color: #170508; border-radius: 6px; padding: 10px; border-left: 4px solid #FF1744; margin-bottom: 8px; }
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #161B22; color: #00E676; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-
-    /* CSS TOOLTIP FLUX D'ORDRES MULTI-TIMEFRAME */
-    .radar-table-container { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .radar-table-container th { background-color: #0D1117; color: #8B949E; padding: 8px; text-align: left; border-bottom: 1px solid #21262D; }
-    .radar-table-container td { padding: 10px 8px; border-bottom: 1px solid #161B22; }
-    .radar-table-container tr:hover { background-color: #0D1117; }
-    
-    .tooltip-hover-cell { position: relative; display: inline-block; cursor: pointer; }
-    .tooltip-box {
-        visibility: hidden;
-        opacity: 0;
-        position: absolute;
-        z-index: 99999;
-        left: 105%;
-        top: -15px;
-        width: 330px;
-        background: #090D14;
-        border: 1px solid #2962FF;
-        border-radius: 8px;
-        padding: 12px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.9), 0 0 15px rgba(41,98,255,0.25);
-        transition: opacity 0.2s ease, visibility 0.2s ease;
-        pointer-events: none;
-        color: #E6EDF3;
-        font-size: 11px;
-    }
-    .tooltip-hover-cell:hover .tooltip-box {
-        visibility: visible;
-        opacity: 1;
-    }
-    .mtf-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 6px; margin-bottom: 6px; text-align: center; }
-    .mtf-item { background: #04060A; border: 1px solid #1F2937; border-radius: 5px; padding: 5px 2px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -118,7 +85,7 @@ analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
-# ⚡ FLUX DE PRIX DIRECT
+# ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES
 # ==========================================================
 def obtenir_prix_live_multi_sources():
     prix_dict = {}
@@ -169,10 +136,10 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 📥 FALLBACK DIRECT MEXC
+# 📥 FALLBACK MEXC DIRECT POUR LES BOUGIES
 # ==========================================================
 @st.cache_data(ttl=8)
-def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=60):
+def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=50):
     try:
         url = f"https://api.mexc.com/api/v3/klines?symbol={symbol_base}USDT&interval={interval}&limit={limit}"
         res = requests.get(
@@ -198,124 +165,6 @@ def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=60):
         df["Datetime"] = pd.to_datetime(df["time"], unit="ms")
         df.set_index("Datetime", inplace=True)
         return df[["Open", "High", "Low", "Close", "Volume"]]
-    except Exception:
-        return None
-
-
-# ==========================================================
-# 📊 CALCUL DE L'ORDER FLOW & RSI MULTI-TIMEFRAMES (MTF)
-# ==========================================================
-@st.cache_data(ttl=12)
-def calculer_order_flow_mtf(symbol_base):
-    try:
-        df_15 = obtenir_bougies_mexc_direct(symbol_base, "15m", limit=70)
-        if df_15 is None or len(df_15) < 20:
-            return None
-
-        def get_rsi_cmf(d_frame):
-            if len(d_frame) < 14:
-                return 50.0, 0.0
-            # RSI 14
-            d = d_frame["Close"].diff()
-            g = d.where(d > 0, 0).rolling(14).mean()
-            l = (-d.where(d < 0, 0)).rolling(14).mean()
-            rs = g / (l + 1e-9)
-            rsi = 100 - (100 / (1 + rs))
-            rsi_val = (
-                float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
-            )
-
-            # CMF 20 (Chaikin Money Flow = Order Flow)
-            hl = d_frame["High"] - d_frame["Low"]
-            hl = hl.replace(0, 1e-9)
-            mfm = (
-                (d_frame["Close"] - d_frame["Low"])
-                - (d_frame["High"] - d_frame["Close"])
-            ) / hl
-            mfv = mfm * d_frame["Volume"]
-            vol_sum = d_frame["Volume"].rolling(min(len(d_frame), 20)).sum()
-            cmf = mfv.rolling(min(len(d_frame), 20)).sum() / (vol_sum + 1e-9)
-            cmf_val = (
-                float(cmf.iloc[-1]) if not pd.isna(cmf.iloc[-1]) else 0.0
-            )
-            return rsi_val, cmf_val
-
-        # 15m
-        rsi_15, cmf_15 = get_rsi_cmf(df_15)
-
-        # 30m
-        df_30 = (
-            df_15.resample("30min")
-            .agg(
-                {
-                    "Open": "first",
-                    "High": "max",
-                    "Low": "min",
-                    "Close": "last",
-                    "Volume": "sum",
-                }
-            )
-            .dropna()
-        )
-        rsi_30, cmf_30 = get_rsi_cmf(df_30)
-
-        # 1H
-        df_1h = (
-            df_15.resample("1h")
-            .agg(
-                {
-                    "Open": "first",
-                    "High": "max",
-                    "Low": "min",
-                    "Close": "last",
-                    "Volume": "sum",
-                }
-            )
-            .dropna()
-        )
-        rsi_1h, cmf_1h = get_rsi_cmf(df_1h)
-
-        # 4H
-        df_4h = (
-            df_15.resample("4h")
-            .agg(
-                {
-                    "Open": "first",
-                    "High": "max",
-                    "Low": "min",
-                    "Close": "last",
-                    "Volume": "sum",
-                }
-            )
-            .dropna()
-        )
-        rsi_4h, cmf_4h = get_rsi_cmf(df_4h)
-
-        bull_count = sum(
-            1 for c in [cmf_4h, cmf_1h, cmf_30, cmf_15] if c > 0.02
-        )
-        bear_count = sum(
-            1 for c in [cmf_4h, cmf_1h, cmf_30, cmf_15] if c < -0.02
-        )
-
-        if bull_count >= 3:
-            synthese = "🟢 Flux Acheteur Massif"
-        elif bear_count >= 3:
-            synthese = "🔴 Flux Vendeur Lourd"
-        elif bull_count > bear_count:
-            synthese = "🟢 Pression Acheteuse"
-        elif bear_count > bull_count:
-            synthese = "🔴 Pression Vendeuse"
-        else:
-            synthese = "⚪ Flux Équilibré"
-
-        return {
-            "4H": {"rsi": rsi_4h, "cmf": cmf_4h},
-            "1H": {"rsi": rsi_1h, "cmf": cmf_1h},
-            "30M": {"rsi": rsi_30, "cmf": cmf_30},
-            "15M": {"rsi": rsi_15, "cmf": cmf_15},
-            "synthese": synthese,
-        }
     except Exception:
         return None
 
@@ -395,7 +244,7 @@ def charger_experience_ia_collective():
         },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Scanner d'Order Flow & RSI Multi-Timeframes (4H/1H/30m/15m) activé.",
+            "Passerelle MEXC Directe connectée pour PIXEL/USDT.",
         ],
     }
 
@@ -630,6 +479,7 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 else None
             )
 
+            # Fallback MEXC si absent sur Yahoo Finance (ex: PIXEL)
             if df_15 is None or len(df_15) < 20:
                 df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
             if df_1 is None or len(df_1) < 20:
@@ -770,6 +620,7 @@ def analyser_profil(profil_court, donnees_globales):
                 else None
             )
 
+            # 🌟 FALLBACK DIRECT MEXC POUR PIXEL OU AUTRES ALTCOINS
             if df_15 is None or len(df_15) < 20:
                 df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
             if df_1 is None or len(df_1) < 20:
@@ -1181,7 +1032,7 @@ def bloc_live_auto_actualise():
         for p in a_suppr:
             del mem_p[p]
 
-    # 3. Vue Panoramique
+    # 3. Vue Panoramique des 4 profils
     col_c, col_i, col_s, col_u = st.columns(4)
     with col_c:
         st.markdown(
@@ -1265,7 +1116,7 @@ def bloc_live_auto_actualise():
     def executer_moteur_complet(compte):
         heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
 
-        # A. Solana Master (1M XP)
+        # A. Gestion des positions Solana Master (1M XP)
         if "SolanaMaster_SOL/USDT" in compte.get("positions", {}):
             pos_m = compte["positions"]["SolanaMaster_SOL/USDT"]
             p_sol = (
@@ -1631,7 +1482,7 @@ def bloc_live_auto_actualise():
             mode_auto_sol = st.toggle(
                 "⚡ AUTOPILOTE SOLANA",
                 value=c_fresh.get("solana_master_auto", False),
-                key="toggle_solana_master_auto_switch_v12",
+                key="toggle_solana_master_auto_switch_v11",
             )
             if mode_auto_sol != c_fresh.get("solana_master_auto", False):
 
@@ -1685,7 +1536,7 @@ def bloc_live_auto_actualise():
                 unsafe_allow_html=True,
             )
 
-            # MODE 1 : GRID MAKER
+            # MODE 1 : GRID MAKER (0% FEES)
             if sq_on:
                 st.markdown(
                     f"#### 🟢 Grille Maker 0.35% (Ordres Post-Only MEXC) :"
@@ -1722,7 +1573,7 @@ def bloc_live_auto_actualise():
                 if not mode_auto_sol:
                     if st.button(
                         f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
-                        key="btn_manual_take_sol_master_v12",
+                        key="btn_manual_take_sol_master_v11",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -1772,7 +1623,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ AUTO MULTI-RADAR",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v12",
+                key="toggle_auto_live_radar_v11",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1818,7 +1669,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v12"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v11"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1831,9 +1682,6 @@ def bloc_live_auto_actualise():
             mettre_a_jour_un_compte(trader_courant, reset_c)
             st.rerun()
 
-    # ======================================================
-    # ⚡ ONGLET RADAR AVEC BULLES HOVER FLUX D'ORDRES MTF
-    # ======================================================
     with tab_radar:
         memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
         if memoire_active:
@@ -1861,25 +1709,11 @@ def bloc_live_auto_actualise():
         donnees_dict = {
             d["Paire"]: d for d in donnees_tous_profils.get(profil_cle, [])
         }
+        lignes_tableau = []
 
-        # 🌟 GÉNÉRATION DU TABLEAU AVEC BULLES INTERACTIVES
-        tableau_html = """
-        <table class="radar-table-container">
-            <thead>
-                <tr>
-                    <th>Paire (Survolez 🖱️)</th>
-                    <th>Prix Actuel</th>
-                    <th>Statut</th>
-                    <th>Range 15m</th>
-                    <th>RSI 1m</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-
+        # 🌟 GARANTIT L'AFFICHAGE DE TOUTES LES PAIRES (Y COMPRIS PIXEL)
         for paire_raw in PAIRES_RADAR:
-            nom_base = paire_raw.split("-")[0]
-            paire_nom = f"{nom_base}/USDT"
+            paire_nom = f"{paire_raw.split('-')[0]}/USDT"
             d = donnees_dict.get(paire_nom, {})
 
             statut = (
@@ -1887,65 +1721,21 @@ def bloc_live_auto_actualise():
                 if paire_nom in memoire_active
                 else "VEILLE ⚪"
             )
-            prix_val = prix_mexc_direct.get(paire_nom, d.get("Prix", "N/A"))
-            range_val = d.get("Range_Str", "---")
-            rsi_val = d.get("RSI", "50.0")
+            prix_reel_mexc = prix_mexc_direct.get(
+                paire_nom, d.get("Prix", "N/A")
+            )
 
-            # Récupération de l'analyse MTF pour la bulle
-            mtf_info = calculer_order_flow_mtf(nom_base)
-            if mtf_info:
-                tooltip_html = f"""
-                <div class="tooltip-box">
-                    <div style="font-weight:bold; color:#FFD700; border-bottom:1px solid #21262D; padding-bottom:4px; margin-bottom:6px;">
-                        📊 {paire_nom} - FLUX D'ORDRES & RSI MTF
-                    </div>
-                    <div class="mtf-grid">
-                        <div class="mtf-item">
-                            <b style="color:#8B949E;">4H</b><br>
-                            RSI: <b>{mtf_info['4H']['rsi']:.1f}</b><br>
-                            <span style="color:{'#00E676' if mtf_info['4H']['cmf']>0 else '#FF1744'};">{'▲ Influx' if mtf_info['4H']['cmf']>0 else '▼ Pression'}</span>
-                        </div>
-                        <div class="mtf-item">
-                            <b style="color:#8B949E;">1H</b><br>
-                            RSI: <b>{mtf_info['1H']['rsi']:.1f}</b><br>
-                            <span style="color:{'#00E676' if mtf_info['1H']['cmf']>0 else '#FF1744'};">{'▲ Influx' if mtf_info['1H']['cmf']>0 else '▼ Pression'}</span>
-                        </div>
-                        <div class="mtf-item">
-                            <b style="color:#8B949E;">30M</b><br>
-                            RSI: <b>{mtf_info['30M']['rsi']:.1f}</b><br>
-                            <span style="color:{'#00E676' if mtf_info['30M']['cmf']>0 else '#FF1744'};">{'▲ Influx' if mtf_info['30M']['cmf']>0 else '▼ Pression'}</span>
-                        </div>
-                        <div class="mtf-item">
-                            <b style="color:#8B949E;">15M</b><br>
-                            RSI: <b>{mtf_info['15M']['rsi']:.1f}</b><br>
-                            <span style="color:{'#00E676' if mtf_info['15M']['cmf']>0 else '#FF1744'};">{'▲ Influx' if mtf_info['15M']['cmf']>0 else '▼ Pression'}</span>
-                        </div>
-                    </div>
-                    <div style="font-size:10px; color:#A78BFA; margin-top:4px;">
-                        ⚡ <b>Synthèse :</b> {mtf_info['synthese']}
-                    </div>
-                </div>
-                """
-            else:
-                tooltip_html = f"""<div class="tooltip-box">Synchronisation du flux MTF pour {paire_nom}...</div>"""
+            lignes_tableau.append(
+                {
+                    "Paire": paire_nom,
+                    "Prix Actuel": formater_prix(prix_reel_mexc),
+                    "Statut": statut,
+                    "Range 15m": d.get("Range_Str", "Calcul..."),
+                    "RSI": d.get("RSI", "50.0"),
+                }
+            )
 
-            tableau_html += f"""
-            <tr>
-                <td>
-                    <div class="tooltip-hover-cell">
-                        <b>{paire_nom} ℹ️</b>
-                        {tooltip_html}
-                    </div>
-                </td>
-                <td><b>{formater_prix(prix_val)}</b></td>
-                <td>{statut}</td>
-                <td style="color:#8B949E;">{range_val}</td>
-                <td><b>{rsi_val}</b></td>
-            </tr>
-            """
-
-        tableau_html += "</tbody></table>"
-        st.markdown(tableau_html, unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
 
     with tab_ia:
         ia_stats = charger_experience_ia_collective()
