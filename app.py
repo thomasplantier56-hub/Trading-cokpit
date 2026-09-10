@@ -25,7 +25,7 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
 
 
 st.set_page_config(
-    page_title="Cockpit Trader Pro Live - Multi-Timeframe Radar",
+    page_title="Cockpit Trader Pro Live",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -170,7 +170,7 @@ def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=60):
 
 
 # ==========================================================
-# 📊 CALCULATEUR MULTI-TIMEFRAME (15m, 30m, 1h, 4h, 1j)
+# 📊 CALCULATEUR MULTI-TIMEFRAME
 # ==========================================================
 def calculer_rsi_series(series, period=14):
     d = series.diff()
@@ -338,7 +338,7 @@ def charger_experience_ia_collective():
         },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Résolution Tick-by-Tick active pour des sorties de position réalistes.",
+            "Stop-Loss avec plancher de sécurité en % actif pour toutes les paires.",
         ],
     }
 
@@ -382,7 +382,9 @@ def formater_prix(p):
         p = float(p)
     except Exception:
         return str(p)
-    if p < 0.01:
+    if p < 0.001:
+        return f"{p:.7f}"
+    elif p < 0.01:
         return f"{p:.6f}"
     elif p < 0.1:
         return f"{p:.5f}"
@@ -511,7 +513,8 @@ def analyser_solana_master_live():
             )
 
         breakout_signal = None
-        dist = max(atr * 1.2, p * 0.012)
+        # Plancher de sécurité de 1.0% sur Solana 15m
+        dist = max(atr * 1.2, p * 0.010)
         if not sq_on and abs(mom) > 0.03:
             if mom > 0 and p > e50:
                 breakout_signal = {
@@ -622,7 +625,12 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
 
             if (sweep_h or fvg_bear) and (prix < ema_50):
                 entree_opt = high_s
-                dist = max(high_15 - entree_opt + (0.05 * atr_15), 0.35 * atr_15)
+                # Plancher minimum 0.8% sur Setup A+
+                dist = max(
+                    high_15 - entree_opt + (0.15 * atr_15),
+                    0.50 * atr_15,
+                    prix * 0.008,
+                )
                 sl = entree_opt + dist
                 tp = entree_opt - (4.2 * dist)
                 if (
@@ -651,7 +659,11 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
 
             elif (sweep_l or fvg_bull) and (prix > ema_50):
                 entree_opt = low_s
-                dist = max(entree_opt - low_15 + (0.05 * atr_15), 0.35 * atr_15)
+                dist = max(
+                    entree_opt - low_15 + (0.15 * atr_15),
+                    0.50 * atr_15,
+                    prix * 0.008,
+                )
                 sl = entree_opt - dist
                 tp = entree_opt + (4.2 * dist)
                 if (
@@ -682,6 +694,9 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
     return setups_valides[0] if setups_valides else None
 
 
+# ==========================================================
+# ⚡ MOTEUR RADAR AVEC PLANCHER DE SÉCURITÉ RESPIRABLE
+# ==========================================================
 def analyser_profil(profil_court, donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
@@ -743,8 +758,10 @@ def analyser_profil(profil_court, donnees_globales):
             open_p = float(df_1["Open"].iloc[-1])
             high = float(df_1["High"].iloc[-1])
             low = float(df_1["Low"].iloc[-1])
-            high_s_1m = float(df_1["High"].iloc[-9:-2].max())
-            low_s_1m = float(df_1["Low"].iloc[-9:-2].min())
+
+            # Vrais sommets et creux des 8 dernières bougies 1m
+            high_s_1m = float(df_1["High"].iloc[-9:-1].max())
+            low_s_1m = float(df_1["Low"].iloc[-9:-1].min())
 
             d = df_1["Close"].diff()
             g = d.where(d > 0, 0).rolling(7).mean()
@@ -786,6 +803,9 @@ def analyser_profil(profil_court, donnees_globales):
                 "SMC",
             )
 
+            # --------------------------------------------------
+            # 🛡️ 1. CONSERVATEUR (Plancher Sécurité : 0.80% du prix)
+            # --------------------------------------------------
             if profil_court == "Conservateur":
                 motif_famille = "Tendance"
                 if (
@@ -795,8 +815,12 @@ def analyser_profil(profil_court, donnees_globales):
                     and gros_corps
                 ):
                     signal, motif = "🔴 SHORT", "MSS 15m + Sweep Majeur"
-                    opt_p = low_s_1m
-                    dist = max(high - opt_p + (0.05 * atr_1m), 0.40 * atr_1m)
+                    opt_p = prix
+                    dist = max(
+                        high_s_1m - opt_p + (0.15 * atr_1m),
+                        0.70 * atr_1m,
+                        prix * 0.008,
+                    )
                     sl = opt_p + dist
                     tp1 = opt_p - (1.8 * dist)
                     tp2 = opt_p - (3.5 * dist)
@@ -807,12 +831,19 @@ def analyser_profil(profil_court, donnees_globales):
                     and gros_corps
                 ):
                     signal, motif = "🟢 LONG", "MSS 15m + Sweep Majeur"
-                    opt_p = high_s_1m
-                    dist = max(opt_p - low + (0.05 * atr_1m), 0.40 * atr_1m)
+                    opt_p = prix
+                    dist = max(
+                        opt_p - low_s_1m + (0.15 * atr_1m),
+                        0.70 * atr_1m,
+                        prix * 0.008,
+                    )
                     sl = opt_p - dist
                     tp1 = opt_p + (1.8 * dist)
                     tp2 = opt_p + (3.5 * dist)
 
+            # --------------------------------------------------
+            # ⚖️ 2. INTRADAY (Plancher Sécurité : 0.65% du prix)
+            # --------------------------------------------------
             elif profil_court == "Intraday":
                 motif_famille = "SMC"
                 if en_killzone and (sweep_15_h or sweep_15_l):
@@ -822,9 +853,11 @@ def analyser_profil(profil_court, donnees_globales):
                         and (fvg_bear_1m or vol_fort)
                     ):
                         signal, motif = "🔴 SHORT", "Killzone MSS + FVG"
-                        opt_p = low_s_1m
+                        opt_p = prix
                         dist = max(
-                            high - opt_p + (0.05 * atr_1m), 0.35 * atr_1m
+                            high_s_1m - opt_p + (0.12 * atr_1m),
+                            0.60 * atr_1m,
+                            prix * 0.0065,
                         )
                         sl = opt_p + dist
                         tp1 = opt_p - (1.8 * dist)
@@ -835,17 +868,22 @@ def analyser_profil(profil_court, donnees_globales):
                         and (fvg_bull_1m or vol_fort)
                     ):
                         signal, motif = "🟢 LONG", "Killzone MSS + FVG"
-                        opt_p = high_s_1m
+                        opt_p = prix
                         dist = max(
-                            opt_p - low + (0.05 * atr_1m), 0.35 * atr_1m
+                            opt_p - low_s_1m + (0.12 * atr_1m),
+                            0.60 * atr_1m,
+                            prix * 0.0065,
                         )
                         sl = opt_p - dist
                         tp1 = opt_p + (1.8 * dist)
                         tp2 = opt_p + (3.2 * dist)
 
+            # --------------------------------------------------
+            # ⚡ 3. SCALPING 1M (Plancher Sécurité : 0.55% du prix)
+            # --------------------------------------------------
             elif profil_court == "Scalping 1m":
                 motif_famille = "Momentum"
-                if atr_1m >= 0.08 and vol_fort:
+                if vol_fort:
                     if (
                         (prix < ema_50_15)
                         and mss_baissier
@@ -854,11 +892,13 @@ def analyser_profil(profil_court, donnees_globales):
                         signal, motif = "🔴 SHORT", "MSS 1m + Momentum"
                         opt_p = prix
                         dist = max(
-                            high - prix + (0.04 * atr_1m), 0.30 * atr_1m
+                            high_s_1m - opt_p + (0.10 * atr_1m),
+                            0.55 * atr_1m,
+                            prix * 0.0055,
                         )
-                        sl = prix + dist
-                        tp1 = prix - (1.8 * dist)
-                        tp2 = prix - (3.5 * dist)
+                        sl = opt_p + dist
+                        tp1 = opt_p - (1.8 * dist)
+                        tp2 = opt_p - (3.5 * dist)
                     elif (
                         (prix > ema_50_15)
                         and mss_haussier
@@ -866,11 +906,18 @@ def analyser_profil(profil_court, donnees_globales):
                     ):
                         signal, motif = "🟢 LONG", "MSS 1m + Momentum"
                         opt_p = prix
-                        dist = max(prix - low + (0.04 * atr_1m), 0.30 * atr_1m)
-                        sl = prix - dist
-                        tp1 = prix + (1.8 * dist)
-                        tp2 = prix + (3.5 * dist)
+                        dist = max(
+                            opt_p - low_s_1m + (0.10 * atr_1m),
+                            0.55 * atr_1m,
+                            prix * 0.0055,
+                        )
+                        sl = opt_p - dist
+                        tp1 = opt_p + (1.8 * dist)
+                        tp2 = opt_p + (3.5 * dist)
 
+            # --------------------------------------------------
+            # 🔥 4. ULTRA-SCALP (Plancher Sécurité : 0.50% du prix)
+            # --------------------------------------------------
             else:
                 motif_famille = "SMC"
                 if (
@@ -879,19 +926,29 @@ def analyser_profil(profil_court, donnees_globales):
                     and fvg_bear_1m
                 ):
                     signal, motif = "🔴 SHORT", "Ancrage 15m ➔ FVG 1m"
-                    opt_p = float(df_1["Low"].iloc[-3])
-                    dist = max(high - opt_p + (0.04 * atr_1m), 0.25 * atr_1m)
+                    opt_p = prix
+                    # 🌟 Stop protégé au-dessus du vrai swing avec plancher minimum 0.50%
+                    dist = max(
+                        high_s_1m - opt_p + (0.10 * atr_1m),
+                        0.50 * atr_1m,
+                        prix * 0.0050,
+                    )
                     sl = opt_p + dist
                     tp1 = opt_p - (1.8 * dist)
                     tp2 = opt_p - (3.8 * dist)
+
                 elif (
                     (sweep_15_l or prix > ema_50_15)
                     and mss_haussier
                     and fvg_bull_1m
                 ):
                     signal, motif = "🟢 LONG", "Ancrage 15m ➔ FVG 1m"
-                    opt_p = float(df_1["High"].iloc[-3])
-                    dist = max(opt_p - low + (0.04 * atr_1m), 0.25 * atr_1m)
+                    opt_p = prix
+                    dist = max(
+                        opt_p - low_s_1m + (0.10 * atr_1m),
+                        0.50 * atr_1m,
+                        prix * 0.0050,
+                    )
                     sl = opt_p - dist
                     tp1 = opt_p + (1.8 * dist)
                     tp2 = opt_p + (3.8 * dist)
@@ -979,7 +1036,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🎛️ EN-TÊTE FIXE DU COCKPIT
+# 🎛️ EN-TÊTE DU COCKPIT
 # ==========================================================
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
@@ -1068,7 +1125,7 @@ def bloc_live_auto_actualise():
     donnees_globales = charger_donnees_marche_globales()
     sol_master_data = analyser_solana_master_live()
 
-    # 1. Setup A+ Royal du jour
+    # 1. Setup A+ Royal
     setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
     if setup_a_plus:
         st.markdown(
@@ -1125,7 +1182,7 @@ def bloc_live_auto_actualise():
         for p in a_suppr:
             del mem_p[p]
 
-    # 3. Vue Panoramique des 4 profils
+    # 3. Vue Panoramique
     col_c, col_i, col_s, col_u = st.columns(4)
     with col_c:
         st.markdown(
@@ -1203,12 +1260,11 @@ def bloc_live_auto_actualise():
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. MOTEUR AUTO-TRADER (AVEC VÉRIFICATION TICK-BY-TICK RÉEL SANS FLASH-TRADE)
+    # 4. MOTEUR AUTO-TRADER
     compte_actuel = charger_tous_les_comptes().get(trader_courant, compte_actif)
 
     def executer_moteur_complet(compte):
         heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
-        ts_now = time.time()
 
         # A. Gestion des positions Solana Master (1M XP)
         if "SolanaMaster_SOL/USDT" in compte.get("positions", {}):
@@ -1381,7 +1437,7 @@ def bloc_live_auto_actualise():
                     "date_open": heure_fr_trade,
                 }
 
-        # C. Exécution classique du radar multi-profils (AVEC VRAI PRIX LIVE SANS FLASH-TRADE)
+        # C. Exécution classique du radar multi-profils
         if compte.get("auto_actif", False):
             for p_nom in LISTE_PROFILS:
                 levier_strat = leviers_profils[p_nom]
@@ -1404,7 +1460,6 @@ def bloc_live_auto_actualise():
                         levier_p = float(pos.get("levier", levier_strat))
                         notionnel = marge_p * levier_p
 
-                        # 🌟 VALIDATION TICK-BY-TICK SUR LE VRAI PRIX DIRECT
                         if "SHORT" in sens:
                             if not pos.get("tp1_hit", False) and p_live <= tp1:
                                 pos["tp1_hit"] = True
@@ -1412,9 +1467,7 @@ def bloc_live_auto_actualise():
                                     (p_entree - tp1) / p_entree
                                 ) * (notionnel * 0.5)
                                 compte["solde"] += pnl_50
-                                pos["sl"] = (
-                                    p_entree  # Breakeven immédiat sur prix live
-                                )
+                                pos["sl"] = p_entree
                             elif pos.get("tp1_hit", False) and p_live <= tp2:
                                 pnl_runner = (
                                     (p_entree - tp2) / p_entree
@@ -1549,7 +1602,7 @@ def bloc_live_auto_actualise():
 
     mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
-    # 5. ONGLETS DU COCKPIT
+    # 5. LES ONGLETS DU COCKPIT
     tab_auto, tab_radar, tab_sol_master, tab_ia, tab_classement, tab_calc = (
         st.tabs(
             [
@@ -1580,7 +1633,7 @@ def bloc_live_auto_actualise():
             mode_auto_sol = st.toggle(
                 "⚡ AUTOPILOTE SOLANA",
                 value=c_fresh.get("solana_master_auto", False),
-                key="toggle_solana_master_auto_switch_v13",
+                key="toggle_solana_master_auto_switch_v14",
             )
             if mode_auto_sol != c_fresh.get("solana_master_auto", False):
 
@@ -1669,7 +1722,7 @@ def bloc_live_auto_actualise():
                 if not mode_auto_sol:
                     if st.button(
                         f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
-                        key="btn_manual_take_sol_master_v13",
+                        key="btn_manual_take_sol_master_v14",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -1719,7 +1772,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ AUTO MULTI-RADAR",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v13",
+                key="toggle_auto_live_radar_v14",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1765,7 +1818,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v13"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v14"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1784,7 +1837,6 @@ def bloc_live_auto_actualise():
     with tab_radar:
         memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
 
-        # 🌟 CARTES D'ALERTES DU RADAR AVEC COMPTE À REBOURS ACTIF
         if memoire_active:
             for p, info in list(memoire_active.items()):
                 temps_restant = int(
@@ -1812,10 +1864,9 @@ def bloc_live_auto_actualise():
                         unsafe_allow_html=True,
                     )
 
-                    # Bouton pour prendre le trade manuellement sans le rater
                     if st.button(
                         f"⚡ Prendre {info['signal']} sur {p} ({trader_courant})",
-                        key=f"btn_radar_take_{p}",
+                        key=f"btn_radar_take_{p}_v14",
                     ):
 
                         def prendre_pos_radar(c):
@@ -1854,7 +1905,6 @@ def bloc_live_auto_actualise():
         }
         lignes_tableau = []
 
-        # 🌟 TABLEAU MULTI-TIMEFRAME
         for paire_raw in PAIRES_RADAR:
             nom_court = paire_raw.split("-")[0]
             paire_nom = f"{nom_court}/USDT"
