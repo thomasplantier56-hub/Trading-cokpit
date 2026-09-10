@@ -25,7 +25,7 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
 
 
 st.set_page_config(
-    page_title="Cockpit Trader Pro Live - Multi-Timeframe Radar",
+    page_title="Cockpit Trader Pro Live",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -57,7 +57,7 @@ st.markdown(
     .mini-card-scalping { background-color: #140F04; border-radius: 6px; padding: 8px; border-top: 3px solid #FF9100; margin-bottom: 6px; }
     .mini-card-ultrascalp { background-color: #140508; border-radius: 6px; padding: 8px; border-top: 3px solid #FF1744; margin-bottom: 6px; }
     
-    .pos-card { background-color: #0D1117; border-radius: 6px; padding: 12px; border: 1px solid #30363D; margin-bottom: 8px; }
+    .pos-card { background-color: #0D1117; border-radius: 8px; padding: 12px; border: 1px solid #30363D; margin-bottom: 10px; }
     .alert-card-long { background-color: #04140B; border-radius: 8px; padding: 12px; border: 1px solid #00E676; margin-bottom: 10px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.1); }
     .alert-card-short { background-color: #170508; border-radius: 8px; padding: 12px; border: 1px solid #FF1744; margin-bottom: 10px; box-shadow: 0 0 15px rgba(255, 23, 68, 0.1); }
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
@@ -340,7 +340,7 @@ def charger_experience_ia_collective():
         },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Chronomètre de position et détection de signaux périmés activés.",
+            "Chronomètre de position actif avec suivi en temps réel.",
         ],
     }
 
@@ -694,6 +694,9 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
     return setups_valides[0] if setups_valides else None
 
 
+# ==========================================================
+# ⚡ MOTEUR RADAR
+# ==========================================================
 def analyser_profil(profil_court, donnees_globales):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
@@ -1243,14 +1246,14 @@ def bloc_live_auto_actualise():
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. MOTEUR AUTO-TRADER (AVEC ENREGISTREMENT DE TIMESTAMP POUR CHRONOMÈTRE)
+    # 4. MOTEUR AUTO-TRADER
     compte_actuel = charger_tous_les_comptes().get(trader_courant, compte_actif)
 
     def executer_moteur_complet(compte):
         heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
         ts_maintenant = time.time()
 
-        # A. Gestion Solana Master (1M XP)
+        # A. Gestion Solana Master
         if "SolanaMaster_SOL/USDT" in compte.get("positions", {}):
             pos_m = compte["positions"]["SolanaMaster_SOL/USDT"]
             p_sol = (
@@ -1619,7 +1622,7 @@ def bloc_live_auto_actualise():
             mode_auto_sol = st.toggle(
                 "⚡ AUTOPILOTE SOLANA",
                 value=c_fresh.get("solana_master_auto", False),
-                key="toggle_solana_master_auto_switch_v15",
+                key="toggle_solana_master_auto_switch_v16",
             )
             if mode_auto_sol != c_fresh.get("solana_master_auto", False):
 
@@ -1708,7 +1711,7 @@ def bloc_live_auto_actualise():
                 if not mode_auto_sol:
                     if st.button(
                         f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
-                        key="btn_manual_take_sol_master_v15",
+                        key="btn_manual_take_sol_master_v16",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -1745,7 +1748,7 @@ def bloc_live_auto_actualise():
             st.warning("⏳ Connexion au flux MEXC Solana...")
 
     # ======================================================
-    # 🤖 ONGLET AUTO : AVEC CHRONOMÈTRE ET PNL FLOTTANT EN DIRECT
+    # 🤖 ONGLET AUTO : CHRONOMÈTRE RÉPARÉ + BOUTON CLÔTURE
     # ======================================================
     with tab_auto:
         c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
@@ -1762,7 +1765,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ AUTO MULTI-RADAR",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v15",
+                key="toggle_auto_live_radar_v16",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1792,7 +1795,7 @@ def bloc_live_auto_actualise():
                     "✅ Breakeven" if pos.get("tp1_hit", False) else "⏳ Attente"
                 )
 
-                # 🌟 CALCUL DU PNL FLOTTANT EN DIRECT
+                # Calcul du PnL flottant direct
                 p_actuel = prix_mexc_direct.get(paire_nom, entree_val)
                 if entree_val > 0:
                     if "LONG" in sens_nom:
@@ -1809,28 +1812,82 @@ def bloc_live_auto_actualise():
 
                 pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
 
-                # 🌟 CHRONOMÈTRE LIVE
-                ts_open = pos.get("open_timestamp", maintenant_ts)
-                duree_sec = int(max(0, maintenant_ts - ts_open))
-                mins, secs = divmod(duree_sec, 60)
-                chrono_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                # 🌟 CALCUL ROBUSTE DU CHRONO AVEC RÉPARATION AUTOMATIQUE
+                ts_open = pos.get("open_timestamp")
+                if not ts_open:
+                    date_str = pos.get("date_open")
+                    if date_str:
+                        try:
+                            now_p = datetime.datetime.now(TZ_PARIS)
+                            h, m, s_val = map(int, date_str.split(":"))
+                            t_pos = now_p.replace(
+                                hour=h, minute=m, second=s_val, microsecond=0
+                            )
+                            ts_open = t_pos.timestamp()
+                            # Correction en dur dans la position
+                            pos["open_timestamp"] = ts_open
+                        except Exception:
+                            ts_open = maintenant_ts - 120
+                            pos["open_timestamp"] = ts_open
+                    else:
+                        ts_open = maintenant_ts - 120
+                        pos["open_timestamp"] = ts_open
 
-                st.markdown(
-                    f"""
-                <div class="pos-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <b>[{strat_nom}] {paire_nom} ({sens_nom} x{levier_nom})</b>
-                        <span style="color:{pnl_color}; font-weight:bold; font-size:14px;">
-                            PnL : {pnl_flottant:+.2f} USDT ({roe_flottant:+.1f}%)
-                        </span>
+                duree_sec = int(max(0, maintenant_ts - ts_open))
+                hours, remainder = divmod(duree_sec, 3600)
+                mins, secs = divmod(remainder, 60)
+                if hours > 0:
+                    chrono_str = f"{hours}h {mins}m {secs}s"
+                elif mins > 0:
+                    chrono_str = f"{mins}m {secs}s"
+                else:
+                    chrono_str = f"{secs}s"
+
+                col_p1, col_p2 = st.columns([4, 1])
+                with col_p1:
+                    st.markdown(
+                        f"""
+                    <div class="pos-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <b>[{strat_nom}] {paire_nom} ({sens_nom} x{levier_nom})</b>
+                            <span style="color:{pnl_color}; font-weight:bold; font-size:14px;">
+                                PnL : {pnl_flottant:+.2f} USDT ({roe_flottant:+.1f}%)
+                            </span>
+                        </div>
+                        <hr style="border-color:#30363D; margin:6px 0;">
+                        🎯 <b>Entrée :</b> {formater_prix(entree_val)} | 🛑 <b>SL :</b> {formater_prix(sl_val)} | ⏱️ <b>En cours depuis :</b> <span class="timer-badge">{chrono_str}</span><br>
+                        💰 <b>TP1 :</b> {formater_prix(tp1_val)} [{tp1_statut}] | 🚀 <b>TP2 :</b> {formater_prix(tp2_val)}
                     </div>
-                    <hr style="border-color:#30363D; margin:6px 0;">
-                    🎯 <b>Entrée :</b> {formater_prix(entree_val)} | 🛑 <b>SL :</b> {formater_prix(sl_val)} | ⏱️ <b>En cours depuis :</b> <span class="timer-badge">{chrono_str}</span><br>
-                    💰 <b>TP1 :</b> {formater_prix(tp1_val)} [{tp1_statut}] | 🚀 <b>TP2 :</b> {formater_prix(tp2_val)}
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
+                    """,
+                        unsafe_allow_html=True,
+                    )
+                with col_p2:
+                    if st.button(
+                        f"🛑 Couper",
+                        key=f"btn_close_pos_{cle}",
+                        help=f"Clôturer immédiatement {paire_nom} au cours actuel",
+                    ):
+
+                        def couper_pos(c):
+                            if cle in c.get("positions", {}):
+                                c["solde"] += pnl_flottant
+                                c["historique"].insert(
+                                    0,
+                                    {
+                                        "strategie": strat_nom,
+                                        "paire": paire_nom,
+                                        "sens": sens_nom,
+                                        "pnl": round(pnl_flottant, 2),
+                                        "win": pnl_flottant >= 0,
+                                        "date": obtenir_date_heure_paris(
+                                            "%H:%M:%S"
+                                        ),
+                                    },
+                                )
+                                del c["positions"][cle]
+
+                        mettre_a_jour_un_compte(trader_courant, couper_pos)
+                        st.rerun()
         else:
             st.caption("👀 Aucune position ouverte pour le moment.")
 
@@ -1840,7 +1897,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v15"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v16"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1874,11 +1931,9 @@ def bloc_live_auto_actualise():
                     p_reel = prix_mexc_direct.get(p, info["prix_entree"])
                     p_entree = info["prix_entree"]
 
-                    # 🌟 VÉRIFICATION DE LA VALIDITÉ DU SIGNAL (EST-IL DÉJÀ PARTI ?)
                     is_long = "LONG" in info["signal"]
                     if is_long:
                         ecart_pct = (p_reel - p_entree) / p_entree
-                        # Si le cours est monté de plus de 0.25% vers le TP, c'est trop tard !
                         est_perime = ecart_pct > 0.0025
                     else:
                         ecart_pct = (p_entree - p_reel) / p_entree
@@ -1908,7 +1963,7 @@ def bloc_live_auto_actualise():
                     if not est_perime:
                         if st.button(
                             f"⚡ Prendre {info['signal']} sur {p} ({trader_courant})",
-                            key=f"btn_radar_take_{p}_v15",
+                            key=f"btn_radar_take_{p}_v16",
                         ):
 
                             def prendre_pos_radar(c):
