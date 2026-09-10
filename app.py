@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import csv
 import datetime
 import json
@@ -9,7 +10,6 @@ import pandas as pd
 import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import yfinance as yf
 
 # Fuseau horaire Paris
 try:
@@ -25,7 +25,7 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
 
 
 st.set_page_config(
-    page_title="Cockpit Trader Pro Live",
+    page_title="Cockpit Trader Pro Live - MEXC Native",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -64,32 +64,228 @@ st.markdown(
     .timer-badge { background-color: #161B22; color: #00E676; padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: bold; border: 1px solid #30363D; }
     .status-expired { background-color: rgba(255, 23, 68, 0.15); color: #FF1744; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 11px; }
     .status-valid { background-color: rgba(0, 230, 118, 0.15); color: #00E676; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 11px; }
+    
+    .mexc-btn {
+        background: linear-gradient(135deg, #0d1f18 0%, #06140e 100%);
+        color: #14F195 !important;
+        text-decoration: none !important;
+        font-weight: bold;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid #14F195;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        margin-top: 4px;
+    }
+    .mexc-btn:hover {
+        background: #14F195 !important;
+        color: #000000 !important;
+        box-shadow: 0 0 12px rgba(20, 241, 149, 0.4);
+    }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
+# ==========================================================
+# 🌐 DICTIONNAIRE BILINGUE
+# ==========================================================
+I18N = {
+    "FR": {
+        "cockpit_title": "Cockpit Pro",
+        "paris_time": "Heure de Paris :",
+        "user_space": "Espace Utilisateur",
+        "connected_as": "Connecté en tant que :",
+        "create_profile": "Créer un profil",
+        "input_name": "Prénom / Pseudo :",
+        "validate": "Valider",
+        "manage_pairs": "Gestion des Paires Radar",
+        "manage_pairs_sub": "Ajoutez ou retirez des cryptos pour le radar :",
+        "add_crypto_ph": "Ajouter (ex: DOGE, SUI) :",
+        "add_crypto_btn": "➕ Ajouter au Radar",
+        "monitored_pairs": "Paires surveillées :",
+        "active_profile": "Profil actif :",
+        "setup_a_title": "SETUP A+ DU JOUR",
+        "setup_a_waiting": "👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. L'IA surveille le prochain alignement 5 étoiles !",
+        "target_gain": "Gain Visé :",
+        "optimal_entry": "Entrée Optimale (Limit) :",
+        "stop_loss": "Stop-Loss :",
+        "take_profit_royal": "Take-Profit Royal (Ratio 1:4.2) :",
+        "suggested_margin": "Marge Conseillée :",
+        "risk": "Risque :",
+        "open_mexc": "🚀 Ouvrir {pair} sur MEXC Futures ↗️",
+        "trader_on_mexc": "🚀 Trader {pair} sur MEXC Futures ↗️",
+        "manage_on_mexc": "🚀 Gérer {pair} sur MEXC ↗️",
+        "veille": "⚪ En veille",
+        "tab_auto": "🤖 Auto ({user})",
+        "tab_radar": "⚡ Radar ({profile})",
+        "tab_solana": "👑 Solana Master (1M XP)",
+        "tab_ia": "🧠 Cerveau IA",
+        "tab_rank": "🏆 Classement",
+        "tab_calc": "🧮 Calculateur",
+        "balance_realized": "Solde Réalisé :",
+        "toggle_auto_radar": "⚡ AUTO MULTI-RADAR",
+        "reset_btn": "🔄 Reset solde à 1000 USDT",
+        "open_pos_title": "🚀 Positions Ouvertes en Direct :",
+        "no_open_pos": "👀 Aucune position ouverte pour le moment.",
+        "recent_closed": "📜 Derniers Trades Clôturés :",
+        "cut_btn": "🛑 Couper",
+        "running_since": "En cours depuis :",
+        "waiting": "⏳ Attente",
+        "breakeven": "✅ Breakeven",
+        "sol_master_header": "👑 Solana Master",
+        "toggle_sol_auto": "⚡ AUTOPILOTE SOLANA",
+        "sol_auto_on": "🟢 AUTOPILOTE ACTIF : L'IA prend automatiquement tous les Breakouts 1M XP dès leur détection.",
+        "sol_auto_off": "⚪ MODE MANUEL : Surveillez les alertes ci-dessous et cliquez pour ouvrir un trade.",
+        "regime_detected": "Régime Détecté (15m) :",
+        "regime_comp": "🟢 COMPRESSION ACTIVE : MODE GRID MAKER (0% FEES)",
+        "regime_exp": "🚀 EXPANSION : MODE SQUEEZE BREAKOUT",
+        "regime_trans": "⚪ EN TRANSITION (Surveillance du carnet)",
+        "grid_title": "Grille Maker 0.35% (Ordres Post-Only MEXC) :",
+        "orders_buy": "🛒 Ordres Achat Limit :",
+        "orders_sell": "💰 Ordres Vente Limit :",
+        "signal_breakout": "🚀 SIGNAL BREAKOUT 1M XP : SOLANA {sens} (Levier x{lev})",
+        "take_breakout_btn": "⚡ Prendre ce Breakout sur mon compte ({user})",
+        "take_signal_btn": "⚡ Prendre {sens} sur {pair} ({user})",
+        "status_valid": "🟢 ENTRÉE VALIDE",
+        "status_expired": "⚠️ PÉRIMÉ (Le cours est déjà parti)",
+        "pair_col": "Paire",
+        "price_col": "Prix Actuel",
+        "status_col": "Statut",
+        "ia_level": "🏆 Niveau :",
+        "ia_sub": "Chaque trade clôturé améliore les filtres de tout le groupe.",
+        "calc_entry": "Entrée ($)",
+        "calc_sl": "SL ($)",
+        "calc_margin": "Marge (USDT)",
+        "calc_liquidation": "Liquidation :",
+    },
+    "EN": {
+        "cockpit_title": "Cockpit Pro",
+        "paris_time": "Paris Time:",
+        "user_space": "User Space",
+        "connected_as": "Logged in as:",
+        "create_profile": "Create Profile",
+        "input_name": "Name / Handle:",
+        "validate": "Submit",
+        "manage_pairs": "Radar Pair Manager",
+        "manage_pairs_sub": "Add or remove cryptos for live radar scanning:",
+        "add_crypto_ph": "Add (e.g. DOGE, SUI):",
+        "add_crypto_btn": "➕ Add to Radar",
+        "monitored_pairs": "Monitored Pairs:",
+        "active_profile": "Active Profile:",
+        "setup_a_title": "DAILY A+ SETUP",
+        "setup_a_waiting": "👑 <b>DAILY A+ SETUP:</b> ⚪ Waiting. AI scanning for the next 5-star alignment!",
+        "target_gain": "Target Gain:",
+        "optimal_entry": "Optimal Entry (Limit):",
+        "stop_loss": "Stop-Loss:",
+        "take_profit_royal": "Royal Take-Profit (1:4.2 Ratio):",
+        "suggested_margin": "Suggested Margin:",
+        "risk": "Risk:",
+        "open_mexc": "🚀 Open {pair} on MEXC Futures ↗️",
+        "trader_on_mexc": "🚀 Trade {pair} on MEXC Futures ↗️",
+        "manage_on_mexc": "🚀 Manage {pair} on MEXC ↗️",
+        "veille": "⚪ Scanning",
+        "tab_auto": "🤖 Auto ({user})",
+        "tab_radar": "⚡ Radar ({profile})",
+        "tab_solana": "👑 Solana Master (1M XP)",
+        "tab_ia": "🧠 AI Brain",
+        "tab_rank": "🏆 Leaderboard",
+        "tab_calc": "🧮 Calculator",
+        "balance_realized": "Realized Balance:",
+        "toggle_auto_radar": "⚡ AUTO MULTI-RADAR",
+        "reset_btn": "🔄 Reset balance to 1000 USDT",
+        "open_pos_title": "🚀 Live Open Positions:",
+        "no_open_pos": "👀 No active open positions right now.",
+        "recent_closed": "📜 Recent Closed Trades:",
+        "cut_btn": "🛑 Close",
+        "running_since": "Running for:",
+        "waiting": "⏳ Pending",
+        "breakeven": "✅ Breakeven",
+        "sol_master_header": "👑 Solana Master",
+        "toggle_sol_auto": "⚡ SOLANA AUTOPILOT",
+        "sol_auto_on": "🟢 AUTOPILOT ACTIVE: AI automatically executes all 1M XP Breakouts upon detection.",
+        "sol_auto_off": "⚪ MANUAL MODE: Monitor alerts below and click to open a trade.",
+        "regime_detected": "Detected Regime (15m):",
+        "regime_comp": "🟢 ACTIVE COMPRESSION: GRID MAKER MODE (0% FEES)",
+        "regime_exp": "🚀 EXPANSION: SQUEEZE BREAKOUT MODE",
+        "regime_trans": "⚪ IN TRANSITION (Orderbook Scanning)",
+        "grid_title": "0.35% Maker Grid (MEXC Post-Only Orders):",
+        "orders_buy": "🛒 Limit Buy Orders:",
+        "orders_sell": "💰 Limit Sell Orders:",
+        "signal_breakout": "🚀 1M XP BREAKOUT SIGNAL: SOLANA {sens} (x{lev} Leverage)",
+        "take_breakout_btn": "⚡ Take this Breakout on my account ({user})",
+        "take_signal_btn": "⚡ Take {sens} on {pair} ({user})",
+        "status_valid": "🟢 VALID ENTRY",
+        "status_expired": "⚠️ EXPIRED (Price already ran away)",
+        "pair_col": "Pair",
+        "price_col": "Current Price",
+        "status_col": "Status",
+        "ia_level": "🏆 Level:",
+        "ia_sub": "Every closed trade enhances the shared multi-pair filters.",
+        "calc_entry": "Entry ($)",
+        "calc_sl": "SL ($)",
+        "calc_margin": "Margin (USDT)",
+        "calc_liquidation": "Liquidation:",
+    },
+}
+
 FICHIER_COMPTES = "comptes_traders.json"
 FICHIER_IA = "experience_ia_collective.json"
+FICHIER_PAIRES = "paires_radar.json"
 
-PAIRES_RADAR = [
-    "SOL-USD",
-    "BTC-USD",
-    "ETH-USD",
-    "XRP-USD",
-    "ZEC-USD",
-    "PIPPIN-USD",
-    "BNB-USD",
-    "PIXEL-USD",
-]
 LISTE_PROFILS = ["Conservateur", "Intraday", "Scalping 1m", "Ultra-Scalp"]
 analyzer = SentimentIntensityAnalyzer()
 
 
 # ==========================================================
+# 🪙 GESTION DYNAMIQUE DES PAIRES DU RADAR
+# ==========================================================
+def charger_paires_radar():
+    if os.path.exists(FICHIER_PAIRES):
+        try:
+            with open(FICHIER_PAIRES, "r", encoding="utf-8") as f:
+                paires = json.load(f)
+                if paires and isinstance(paires, list):
+                    return paires
+        except Exception:
+            pass
+    paires_defaut = [
+        "SOL",
+        "BTC",
+        "ETH",
+        "XRP",
+        "ZEC",
+        "PIPPIN",
+        "BNB",
+        "PIXEL",
+    ]
+    sauvegarder_paires_radar(paires_defaut)
+    return paires_defaut
+
+
+def sauvegarder_paires_radar(paires_list):
+    with open(FICHIER_PAIRES, "w", encoding="utf-8") as f:
+        json.dump(paires_list, f, indent=4, ensure_ascii=False)
+
+
+def get_mexc_futures_url(paire_str):
+    base = (
+        paire_str.replace("/USDT", "")
+        .replace("-USD", "")
+        .replace("USDT", "")
+        .strip()
+        .upper()
+    )
+    return f"https://futures.mexc.com/exchange/{base}_USDT"
+
+
+# ==========================================================
 # ⚡ FLUX DE PRIX DIRECT MULTI-SOURCES
 # ==========================================================
-def obtenir_prix_live_multi_sources():
+def obtenir_prix_live_multi_sources(bases_actives):
     prix_dict = {}
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -99,56 +295,37 @@ def obtenir_prix_live_multi_sources():
         res = requests.get(url_mexc, headers=headers, timeout=1.5).json()
         for it in res:
             s_name = it.get("symbol", "")
-            for base in [
-                "SOL",
-                "BTC",
-                "ETH",
-                "XRP",
-                "ZEC",
-                "PIPPIN",
-                "BNB",
-                "PIXEL",
-            ]:
+            for base in bases_actives:
                 if s_name == f"{base}USDT":
                     prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
     except Exception:
         pass
 
-    if not prix_dict or "SOL/USDT" not in prix_dict or "PIXEL/USDT" not in prix_dict:
-        try:
-            url_binance = "https://api.binance.com/api/v3/ticker/price"
-            res3 = requests.get(url_binance, headers=headers, timeout=1.5).json()
-            for it in res3:
-                s_name = it.get("symbol", "")
-                for base in [
-                    "SOL",
-                    "BTC",
-                    "ETH",
-                    "XRP",
-                    "ZEC",
-                    "BNB",
-                    "PIXEL",
-                ]:
-                    if s_name == f"{base}USDT" and f"{base}/USDT" not in prix_dict:
-                        prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
-        except Exception:
-            pass
+    try:
+        url_binance = "https://api.binance.com/api/v3/ticker/price"
+        res3 = requests.get(url_binance, headers=headers, timeout=1.5).json()
+        for it in res3:
+            s_name = it.get("symbol", "")
+            for base in bases_actives:
+                if s_name == f"{base}USDT" and f"{base}/USDT" not in prix_dict:
+                    prix_dict[f"{base}/USDT"] = float(it.get("price", 0))
+    except Exception:
+        pass
 
     return prix_dict
 
 
 # ==========================================================
-# 📥 FALLBACK MEXC DIRECT BOUGIES
+# 📥 MOTEUR BOUGIES 100% MEXC DIRECT (SANS AUCUNE ERREUR YFINANCE)
 # ==========================================================
-@st.cache_data(ttl=8)
-def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=60):
+def fetch_single_mexc_kline(base, interval, limit=60):
     try:
-        url = f"https://api.mexc.com/api/v3/klines?symbol={symbol_base}USDT&interval={interval}&limit={limit}"
+        url = f"https://api.mexc.com/api/v3/klines?symbol={base}USDT&interval={interval}&limit={limit}"
         res = requests.get(
             url, headers={"User-Agent": "Mozilla/5.0"}, timeout=2
         ).json()
         if not res or not isinstance(res, list):
-            return None
+            return base, None
         df = pd.DataFrame(
             res,
             columns=[
@@ -166,9 +343,32 @@ def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=60):
             df[col] = df[col].astype(float)
         df["Datetime"] = pd.to_datetime(df["time"], unit="ms")
         df.set_index("Datetime", inplace=True)
-        return df[["Open", "High", "Low", "Close", "Volume"]]
+        return base, df[["Open", "High", "Low", "Close", "Volume"]]
     except Exception:
-        return None
+        return base, None
+
+
+@st.cache_data(ttl=8)
+def charger_donnees_marche_globales(bases_actives):
+    """Télécharge en parallèle toutes les bougies directement depuis MEXC (Zéro Yahoo Finance)."""
+    donnees = {"15m": {}, "5m": {}, "1m": {}}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        for interval in ["15m", "5m", "1m"]:
+            for base in bases_actives:
+                futures.append(
+                    (
+                        interval,
+                        executor.submit(
+                            fetch_single_mexc_kline, base, interval, 60
+                        ),
+                    )
+                )
+        for interval, fut in futures:
+            base, df = fut.result()
+            if df is not None:
+                donnees[interval][base] = df
+    return donnees
 
 
 # ==========================================================
@@ -197,8 +397,8 @@ def obtenir_stats_mtf_radar(nom_court):
         "rsi_1d": "50.0",
     }
     try:
-        df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 120)
-        df_1d = obtenir_bougies_mexc_direct(nom_court, "1d", 30)
+        _, df_15 = fetch_single_mexc_kline(nom_court, "15m", 120)
+        _, df_1d = fetch_single_mexc_kline(nom_court, "1d", 30)
 
         if df_15 is not None and len(df_15) >= 20:
             rsi_15 = float(calculer_rsi_series(df_15["Close"], 14).iloc[-1])
@@ -315,7 +515,7 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
     sauvegarder_tous_les_comptes(comptes)
 
 
-def charger_experience_ia_collective():
+def charger_experience_ia_collective(bases_actives):
     if os.path.exists(FICHIER_IA):
         try:
             with open(FICHIER_IA, "r", encoding="utf-8") as f:
@@ -325,7 +525,7 @@ def charger_experience_ia_collective():
     return {
         "xp_total": 1000000,
         "niveau": "Maître Quant Suprême 🥇 (1M XP)",
-        "scores_paires": {p.split("-")[0]: 1.0 for p in PAIRES_RADAR},
+        "scores_paires": {p: 1.0 for p in bases_actives},
         "cooldowns": {
             "SMC": 0,
             "Momentum": 0,
@@ -340,7 +540,7 @@ def charger_experience_ia_collective():
         },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Chronomètre de position actif avec suivi en temps réel.",
+            "Moteur 100% MEXC Native connecté : Zéro erreur de téléchargement.",
         ],
     }
 
@@ -351,8 +551,15 @@ def sauvegarder_experience_ia_collective(ia_data):
 
 
 def mettre_a_jour_ia_collective(nom_trader, paire_brute, motif_famille, win, pnl):
-    ia = charger_experience_ia_collective()
-    paire = paire_brute.split("/")[0]
+    paires_actives = charger_paires_radar()
+    ia = charger_experience_ia_collective(paires_actives)
+    paire = (
+        paire_brute.split("/")[0]
+        .split("-")[0]
+        .replace("USDT", "")
+        .strip()
+        .upper()
+    )
     ia["xp_total"] += 25 if win else 5
     score_p = ia["scores_paires"].get(paire, 1.0)
     heure_str = obtenir_date_heure_paris("%H:%M")
@@ -436,33 +643,13 @@ def charger_fear_and_greed():
         return 50, "Neutre"
 
 
-@st.cache_data(ttl=8)
-def charger_donnees_marche_globales():
-    donnees = {}
-    for intervalle, periode in [("15m", "5d"), ("5m", "2d"), ("1m", "1d")]:
-        try:
-            df = yf.download(
-                " ".join(PAIRES_RADAR),
-                interval=intervalle,
-                period=periode,
-                group_by="ticker",
-                auto_adjust=True,
-                progress=False,
-                threads=False,
-            )
-            donnees[intervalle] = df
-        except Exception:
-            donnees[intervalle] = None
-    return donnees
-
-
 # ==========================================================
 # 👑 SCANNER SOLANA MASTER 1M XP
 # ==========================================================
 @st.cache_data(ttl=6)
 def analyser_solana_master_live():
     try:
-        df = obtenir_bougies_mexc_direct("SOL", "15m", 45)
+        _, df = fetch_single_mexc_kline("SOL", "15m", 45)
         if df is None or len(df) < 25:
             return None
 
@@ -496,8 +683,6 @@ def analyser_solana_master_live():
         df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
 
         last_c = df.iloc[-1]
-        prev_c = df.iloc[-2]
-
         p = float(last_c["Close"])
         atr = float(last_c["ATR"])
         sq_on = bool(last_c["Squeeze_ON"])
@@ -552,37 +737,15 @@ def analyser_solana_master_live():
         return None
 
 
-def detecter_setup_a_plus_du_jour(donnees_globales):
-    df_15m = donnees_globales.get("15m")
-    df_1m = donnees_globales.get("1m")
-    if df_15m is None or df_1m is None:
-        return None
+def detecter_setup_a_plus_du_jour(donnees_globales, bases_actives):
+    data_15m = donnees_globales.get("15m", {})
+    data_1m = donnees_globales.get("1m", {})
 
     setups_valides = []
-    for paire in PAIRES_RADAR:
-        nom_court = paire.split("-")[0]
+    for nom_court in bases_actives:
         try:
-            df_15 = (
-                df_15m[paire].dropna()
-                if (
-                    isinstance(df_15m.columns, pd.MultiIndex)
-                    and paire in df_15m.columns.levels[0]
-                )
-                else None
-            )
-            df_1 = (
-                df_1m[paire].dropna()
-                if (
-                    isinstance(df_1m.columns, pd.MultiIndex)
-                    and paire in df_1m.columns.levels[0]
-                )
-                else None
-            )
-
-            if df_15 is None or len(df_15) < 20:
-                df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
-            if df_1 is None or len(df_1) < 20:
-                df_1 = obtenir_bougies_mexc_direct(nom_court, "1m", 45)
+            df_15 = data_15m.get(nom_court)
+            df_1 = data_1m.get(nom_court)
 
             if df_15 is None or df_1 is None or len(df_15) < 20 or len(df_1) < 20:
                 continue
@@ -695,45 +858,23 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
 
 
 # ==========================================================
-# ⚡ MOTEUR RADAR
+# ⚡ MOTEUR RADAR MULTI-PROFIL
 # ==========================================================
-def analyser_profil(profil_court, donnees_globales):
+def analyser_profil(profil_court, donnees_globales, bases_actives):
     maintenant = datetime.datetime.now(datetime.timezone.utc)
     heure_utc = maintenant.hour
     en_killzone = (7 <= heure_utc <= 11) or (12 <= heure_utc <= 16)
-    ia_data = charger_experience_ia_collective()
+    ia_data = charger_experience_ia_collective(bases_actives)
     ts_actuel = time.time()
 
-    data_15m = donnees_globales.get("15m")
-    data_1m = donnees_globales.get("1m")
+    data_15m = donnees_globales.get("15m", {})
+    data_1m = donnees_globales.get("1m", {})
 
     resultats = []
-    for paire in PAIRES_RADAR:
-        nom_court = paire.split("-")[0]
+    for nom_court in bases_actives:
         try:
-            df_15 = (
-                data_15m[paire].dropna()
-                if (
-                    data_15m is not None
-                    and isinstance(data_15m.columns, pd.MultiIndex)
-                    and paire in data_15m.columns.levels[0]
-                )
-                else None
-            )
-            df_1 = (
-                data_1m[paire].dropna()
-                if (
-                    data_1m is not None
-                    and isinstance(data_1m.columns, pd.MultiIndex)
-                    and paire in data_1m.columns.levels[0]
-                )
-                else None
-            )
-
-            if df_15 is None or len(df_15) < 20:
-                df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
-            if df_1 is None or len(df_1) < 20:
-                df_1 = obtenir_bougies_mexc_direct(nom_court, "1m", 45)
+            df_15 = data_15m.get(nom_court)
+            df_1 = data_1m.get(nom_court)
 
             if df_15 is None or df_1 is None or len(df_15) < 15 or len(df_1) < 15:
                 continue
@@ -949,6 +1090,7 @@ def analyser_profil(profil_court, donnees_globales):
             resultats.append(
                 {
                     "Paire": nom_paire,
+                    "Nom_Court": nom_court,
                     "Prix": prix,
                     "High": high,
                     "Low": low,
@@ -969,31 +1111,51 @@ def analyser_profil(profil_court, donnees_globales):
 
 
 # ==========================================================
-# 👤 GESTION DU PROFIL UTILISATEUR
+# 👤 GESTION DU PROFIL UTILISATEUR & LANGUE
 # ==========================================================
 comptes_actuels = charger_tous_les_comptes()
 liste_noms = list(comptes_actuels.keys())
+paires_actives = charger_paires_radar()
+
+if "langue" not in st.session_state:
+    st.session_state.langue = "FR"
+
+st.sidebar.markdown("### 🌐 Langue / Language")
+choix_langue = st.sidebar.selectbox(
+    "Language",
+    ["🇫🇷 Français", "🇬🇧 English"],
+    index=0 if st.session_state.langue == "FR" else 1,
+    label_visibility="collapsed",
+)
+st.session_state.langue = "FR" if "Français" in choix_langue else "EN"
+LANG = st.session_state.langue
+
+
+def t(key, **kwargs):
+    text = I18N[LANG].get(key, I18N["FR"].get(key, key))
+    return text.format(**kwargs) if kwargs else text
+
 
 if "trader_session" not in st.session_state:
     st.session_state.trader_session = (
         "Thomas" if "Thomas" in liste_noms else liste_noms[0]
     )
 
-st.sidebar.markdown("### 👤 Espace Utilisateur")
+st.sidebar.markdown(f"### 👤 {t('user_space')}")
 idx_nom = (
     liste_noms.index(st.session_state.trader_session)
     if st.session_state.trader_session in liste_noms
     else 0
 )
 choix_trader = st.sidebar.selectbox(
-    "Connecté en tant que :", liste_noms, index=idx_nom, key="select_trader_box"
+    t("connected_as"), liste_noms, index=idx_nom, key="select_trader_box"
 )
 st.session_state.trader_session = choix_trader
 trader_courant = st.session_state.trader_session
 
-with st.sidebar.expander("➕ Créer un profil"):
-    nouveau_nom = st.text_input("Prénom / Pseudo :").strip()
-    if st.button("Valider"):
+with st.sidebar.expander(f"➕ {t('create_profile')}"):
+    nouveau_nom = st.text_input(t("input_name")).strip()
+    if st.button(t("validate")):
         if nouveau_nom:
             comptes_frais = charger_tous_les_comptes()
             if nouveau_nom not in comptes_frais:
@@ -1007,6 +1169,42 @@ with st.sidebar.expander("➕ Créer un profil"):
                 }
                 sauvegarder_tous_les_comptes(comptes_frais)
             st.session_state.trader_session = nouveau_nom
+            st.rerun()
+
+# GESTIONNAIRE DYNAMIQUE DE PAIRES (SIDEBAR)
+with st.sidebar.expander(f"🪙 {t('manage_pairs')}", expanded=False):
+    st.caption(t("manage_pairs_sub"))
+
+    nouvelle_paire_in = (
+        st.text_input(t("add_crypto_ph"), key="input_new_crypto")
+        .strip()
+        .upper()
+    )
+    if st.button(t("add_crypto_btn"), key="btn_add_crypto"):
+        if nouvelle_paire_in:
+            nom_nettoye = (
+                nouvelle_paire_in.replace("/USDT", "")
+                .replace("-USD", "")
+                .replace("USDT", "")
+                .strip()
+                .upper()
+            )
+            p_actuelles = charger_paires_radar()
+            if nom_nettoye not in p_actuelles:
+                p_actuelles.append(nom_nettoye)
+                sauvegarder_paires_radar(p_actuelles)
+                st.success(f"✅ {nom_nettoye}/USDT added !")
+                st.rerun()
+
+    st.markdown("---")
+    st.markdown(f"<b>{t('monitored_pairs')}</b>", unsafe_allow_html=True)
+    p_actuelles = charger_paires_radar()
+    for p_sym in p_actuelles:
+        c_p1, c_p2 = st.columns([3, 1])
+        c_p1.markdown(f"• **{p_sym}/USDT**")
+        if c_p2.button("❌", key=f"btn_del_pair_{p_sym}"):
+            p_actuelles.remove(p_sym)
+            sauvegarder_paires_radar(p_actuelles)
             st.rerun()
 
 compte_actif = comptes_actuels.get(
@@ -1027,11 +1225,11 @@ compte_actif = comptes_actuels.get(
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.markdown(
-        f"### ⚡ Cockpit Pro <span class='user-badge'>👤 {trader_courant}</span>",
+        f"### ⚡ {t('cockpit_title')} <span class='user-badge'>👤 {trader_courant}</span>",
         unsafe_allow_html=True,
     )
 with col_h2:
-    st.caption(f"🕒 Heure de Paris : **{obtenir_date_heure_paris()}**")
+    st.caption(f"🕒 {t('paris_time')} **{obtenir_date_heure_paris()}**")
 
 news_list = charger_news_statiques()
 fg_score, fg_sentiment = charger_fear_and_greed()
@@ -1045,7 +1243,7 @@ st.markdown(
 )
 
 profil = st.select_slider(
-    "Profil actif :",
+    t("active_profile"),
     options=[
         "🛡️ Conservateur (15m x20)",
         "⚖️ Intraday (5m x50)",
@@ -1102,37 +1300,44 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ
+# 🌟 FRAGMENT AUTO-ACTUALISÉ FLUIDE (100% MEXC NATIVE)
 # ==========================================================
 @st.fragment(run_every="8s")
 def bloc_live_auto_actualise():
     maintenant_ts = time.time()
-    prix_mexc_direct = obtenir_prix_live_multi_sources()
-    donnees_globales = charger_donnees_marche_globales()
+    bases_actives = charger_paires_radar()
+    prix_mexc_direct = obtenir_prix_live_multi_sources(bases_actives)
+    donnees_globales = charger_donnees_marche_globales(bases_actives)
     sol_master_data = analyser_solana_master_live()
 
-    # 1. Setup A+ Royal
-    setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
+    # 1. Setup A+ Royal du jour
+    setup_a_plus = detecter_setup_a_plus_du_jour(
+        donnees_globales, bases_actives
+    )
     if setup_a_plus:
+        url_mexc_a = get_mexc_futures_url(setup_a_plus["paire"])
         st.markdown(
             f"""
         <div class="gold-card">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="gold-title">👑 SETUP A+ DU JOUR : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
-                <span style="color:#00E676; font-weight:bold; font-size:15px;">Gain Visé : +{setup_a_plus['gain_vise']} USDT (1:4.2)</span>
+                <span class="gold-title">👑 {t('setup_a_title')} : {setup_a_plus['paire']} ({setup_a_plus['sens']})</span>
+                <span style="color:#00E676; font-weight:bold; font-size:15px;">{t('target_gain')} +{setup_a_plus['gain_vise']} USDT (1:4.2)</span>
             </div>
             <hr style="border-color:#FFD700; margin:6px 0;">
-            🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
-            🚀 <b>Take-Profit Royal (Ratio 1:4.2) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
-            💼 <b>Marge Conseillée :</b> {setup_a_plus['marge_suggeree']} USDT (Levier x{setup_a_plus['levier']}) | 🛑 Risque : -{setup_a_plus['perte_max']} USDT<br>
-            <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']}</i></small>
+            🎯 <b>{t('optimal_entry')}</b> <span class="opt-price">{formater_prix(setup_a_plus['entree'])} USDT</span> | 🛑 <b>{t('stop_loss')}</b> {formater_prix(setup_a_plus['sl'])} USDT<br>
+            🚀 <b>{t('take_profit_royal')}</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(setup_a_plus['tp'])} USDT</span><br>
+            💼 <b>{t('suggested_margin')}</b> {setup_a_plus['marge_suggeree']} USDT (x{setup_a_plus['levier']}) | 🛑 {t('risk')} -{setup_a_plus['perte_max']} USDT<br>
+            <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
+                <small style="color:#AAA;">💡 <i>{setup_a_plus['motif']}</i></small>
+                <a href="{url_mexc_a}" target="_blank" class="mexc-btn">{t('open_mexc', pair=setup_a_plus['paire'])}</a>
+            </div>
         </div>
         """,
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            """<div class="gold-card-empty">👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. L'IA surveille le prochain alignement 5 étoiles !</div>""",
+            f"""<div class="gold-card-empty">{t('setup_a_waiting')}</div>""",
             unsafe_allow_html=True,
         )
 
@@ -1142,7 +1347,7 @@ def bloc_live_auto_actualise():
         if p_nom not in st.session_state.memoire_par_profil:
             st.session_state.memoire_par_profil[p_nom] = {}
 
-        donnees_p = analyser_profil(p_nom, donnees_globales)
+        donnees_p = analyser_profil(p_nom, donnees_globales, bases_actives)
         donnees_tous_profils[p_nom] = donnees_p
 
         for d in donnees_p:
@@ -1172,7 +1377,7 @@ def bloc_live_auto_actualise():
     col_c, col_i, col_s, col_u = st.columns(4)
     with col_c:
         st.markdown(
-            """<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><br>""",
+            f"""<div class="mini-card-conservateur"><b>🛡️ Conservateur (15m x20)</b><br>""",
             unsafe_allow_html=True,
         )
         sigs_c = st.session_state.memoire_par_profil.get("Conservateur", {})
@@ -1184,14 +1389,14 @@ def bloc_live_auto_actualise():
                 )
         else:
             st.markdown(
-                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                f"<span style='color:#6E7681;'>{t('veille')}</span>",
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_i:
         st.markdown(
-            """<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><br>""",
+            f"""<div class="mini-card-intraday"><b>⚖️ Intraday (5m x50)</b><br>""",
             unsafe_allow_html=True,
         )
         sigs_i = st.session_state.memoire_par_profil.get("Intraday", {})
@@ -1203,14 +1408,14 @@ def bloc_live_auto_actualise():
                 )
         else:
             st.markdown(
-                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                f"<span style='color:#6E7681;'>{t('veille')}</span>",
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_s:
         st.markdown(
-            """<div class="mini-card-scalping"><b>⚡ Scalp (1m x100)</b><br>""",
+            f"""<div class="mini-card-scalping"><b>⚡ Scalp (1m x100)</b><br>""",
             unsafe_allow_html=True,
         )
         sigs_s = st.session_state.memoire_par_profil.get("Scalping 1m", {})
@@ -1222,14 +1427,14 @@ def bloc_live_auto_actualise():
                 )
         else:
             st.markdown(
-                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                f"<span style='color:#6E7681;'>{t('veille')}</span>",
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_u:
         st.markdown(
-            """<div class="mini-card-ultrascalp"><b>🔥 Ultra (1m x150)</b><br>""",
+            f"""<div class="mini-card-ultrascalp"><b>🔥 Ultra (1m x150)</b><br>""",
             unsafe_allow_html=True,
         )
         sigs_u = st.session_state.memoire_par_profil.get("Ultra-Scalp", {})
@@ -1241,12 +1446,12 @@ def bloc_live_auto_actualise():
                 )
         else:
             st.markdown(
-                "<span style='color:#6E7681;'>⚪ En veille</span>",
+                f"<span style='color:#6E7681;'>{t('veille')}</span>",
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. MOTEUR AUTO-TRADER
+    # 4. MOTEUR AUTO-TRADER (TICK-BY-TICK DIRECT)
     compte_actuel = charger_tous_les_comptes().get(trader_courant, compte_actif)
 
     def executer_moteur_complet(compte):
@@ -1425,7 +1630,7 @@ def bloc_live_auto_actualise():
                     "open_timestamp": ts_maintenant,
                 }
 
-        # C. Exécution classique du radar
+        # C. Exécution classique du radar multi-profils
         if compte.get("auto_actif", False):
             for p_nom in LISTE_PROFILS:
                 levier_strat = leviers_profils[p_nom]
@@ -1591,16 +1796,16 @@ def bloc_live_auto_actualise():
 
     mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
-    # 5. ONGLETS DU COCKPIT
+    # 5. LES ONGLETS DU COCKPIT BILINGUE
     tab_auto, tab_radar, tab_sol_master, tab_ia, tab_classement, tab_calc = (
         st.tabs(
             [
-                f"🤖 Auto ({trader_courant})",
-                f"⚡ Radar ({profil_cle})",
-                "👑 Solana Master (1M XP)",
-                "🧠 Cerveau IA",
-                "🏆 Classement",
-                "🧮 Calculateur",
+                t("tab_auto", user=trader_courant),
+                t("tab_radar", profile=profil_cle),
+                t("tab_solana"),
+                t("tab_ia"),
+                t("tab_rank"),
+                t("tab_calc"),
             ]
         )
     )
@@ -1611,18 +1816,19 @@ def bloc_live_auto_actualise():
     with tab_sol_master:
         c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
         sol_data = analyser_solana_master_live()
+        url_sol_mexc = get_mexc_futures_url("SOL/USDT")
 
         col_sm1, col_sm2 = st.columns([3, 2])
         with col_sm1:
             st.markdown(
-                f"#### 👑 Solana Master <span class='user-badge'>👤 {trader_courant}</span>",
+                f"#### {t('sol_master_header')} <span class='user-badge'>👤 {trader_courant}</span>",
                 unsafe_allow_html=True,
             )
         with col_sm2:
             mode_auto_sol = st.toggle(
-                "⚡ AUTOPILOTE SOLANA",
+                t("toggle_sol_auto"),
                 value=c_fresh.get("solana_master_auto", False),
-                key="toggle_solana_master_auto_switch_v16",
+                key="toggle_solana_master_auto_switch_v19",
             )
             if mode_auto_sol != c_fresh.get("solana_master_auto", False):
 
@@ -1634,15 +1840,15 @@ def bloc_live_auto_actualise():
 
         if mode_auto_sol:
             st.markdown(
-                """<div style="background-color:rgba(20,241,149,0.12); padding:8px; border-radius:6px; border:1px solid #14F195; font-size:13px; color:#14F195; font-weight:bold; margin-bottom:8px;">
-                🟢 AUTOPILOTE ACTIF : L'IA prend automatiquement tous les Breakouts 1M XP dès leur détection.
+                f"""<div style="background-color:rgba(20,241,149,0.12); padding:8px; border-radius:6px; border:1px solid #14F195; font-size:13px; color:#14F195; font-weight:bold; margin-bottom:8px;">
+                {t('sol_auto_on')}
             </div>""",
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                """<div style="background-color:#0D1117; padding:8px; border-radius:6px; border:1px dashed #30363D; font-size:13px; color:#8B949E; margin-bottom:8px;">
-                ⚪ MODE MANUEL : Surveillez les alertes ci-dessous et cliquez pour ouvrir un trade.
+                f"""<div style="background-color:#0D1117; padding:8px; border-radius:6px; border:1px dashed #30363D; font-size:13px; color:#8B949E; margin-bottom:8px;">
+                {t('sol_auto_off')}
             </div>""",
                 unsafe_allow_html=True,
             )
@@ -1655,9 +1861,7 @@ def bloc_live_auto_actualise():
             bo = sol_data["breakout_signal"]
 
             regime_titre = (
-                "🟢 COMPRESSION ACTIVE : MODE GRID MAKER (0% FEES)"
-                if sq_on
-                else "🚀 EXPANSION : MODE SQUEEZE BREAKOUT"
+                t("regime_comp") if sq_on else t("regime_exp")
             )
             regime_color = "#14F195" if sq_on else "#00E5FF"
 
@@ -1669,27 +1873,32 @@ def bloc_live_auto_actualise():
                     <span style="color:#FFF; font-weight:bold; font-size:16px;">{formater_prix(p_sol)} $</span>
                 </div>
                 <hr style="border-color:#14F195; margin:6px 0;">
-                <b>Régime Détecté (15m) :</b> <span style="color:{regime_color}; font-weight:bold;">{regime_titre}</span><br>
-                📊 <b>Momentum :</b> <span style="color:{'#00E676' if mom >= 0 else '#FF1744'}; font-weight:bold;">{mom:+.3f}</span> | ⚡ <b>ATR 15m :</b> {atr:.2f} $ | 📉 <b>EMA 50 :</b> {sol_data['ema50']:.2f} $
+                <b>{t('regime_detected')}</b> <span style="color:{regime_color}; font-weight:bold;">{regime_titre}</span><br>
+                📊 <b>Momentum :</b> <span style="color:{'#00E676' if mom >= 0 else '#FF1744'}; font-weight:bold;">{mom:+.3f}</span> | ⚡ <b>ATR 15m :</b> {atr:.2f} $ | 📉 <b>EMA 50 :</b> {sol_data['ema50']:.2f} $<br>
+                <div style="margin-top:6px;">
+                    <a href="{url_sol_mexc}" target="_blank" class="mexc-btn">{t('manage_on_mexc', pair='SOL/USDT')}</a>
+                </div>
             </div>
             """,
                 unsafe_allow_html=True,
             )
 
             if sq_on:
-                st.markdown(
-                    f"#### 🟢 Grille Maker 0.35% (Ordres Post-Only MEXC) :"
-                )
+                st.markdown(f"#### {t('grid_title')}")
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
-                    st.markdown("<b>🛒 Ordres Achat Limit :</b>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<b>{t('orders_buy')}</b>", unsafe_allow_html=True
+                    )
                     for lvl in sol_data["grid_levels"]:
                         st.markdown(
                             f"<span class='grid-badge-buy'>Achat L{lvl['lvl']} : {lvl['buy']} $</span> (-{lvl['lvl']*0.35:.2f}%)",
                             unsafe_allow_html=True,
                         )
                 with col_g2:
-                    st.markdown("<b>💰 Ordres Vente Limit :</b>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<b>{t('orders_sell')}</b>", unsafe_allow_html=True
+                    )
                     for lvl in sol_data["grid_levels"]:
                         st.markdown(
                             f"<span class='grid-badge-sell'>Vente L{lvl['lvl']} : {lvl['sell']} $</span> (+{lvl['lvl']*0.35:.2f}%)",
@@ -1700,9 +1909,9 @@ def bloc_live_auto_actualise():
                 st.markdown(
                     f"""
                 <div class="{'alert-card-long' if 'LONG' in bo['sens'] else 'alert-card-short'}">
-                    <b>🚀 SIGNAL BREAKOUT 1M XP : SOLANA {bo['sens']} (Levier x{bo['levier']})</b><br>
-                    🎯 <b>Entrée :</b> <span class="opt-price">{formater_prix(bo['entree'])} USDT</span> | 🛑 <b>Stop-Loss :</b> {formater_prix(bo['sl'])} USDT<br>
-                    💰 <b>TP1 (2.2R - 60%) :</b> {formater_prix(bo['tp1'])} USDT | 👑 <b>TP2 Runner (4.5R - 40%) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(bo['tp2'])} USDT</span>
+                    <b>{t('signal_breakout', sens=bo['sens'], lev=bo['levier'])}</b><br>
+                    🎯 <b>{t('optimal_entry')}</b> <span class="opt-price">{formater_prix(bo['entree'])} USDT</span> | 🛑 <b>{t('stop_loss')}</b> {formater_prix(bo['sl'])} USDT<br>
+                    💰 <b>TP1 (2.2R - 60%) :</b> {formater_prix(bo['tp1'])} USDT | 👑 <b>TP2 (4.5R - 40%) :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(bo['tp2'])} USDT</span>
                 </div>
                 """,
                     unsafe_allow_html=True,
@@ -1710,8 +1919,8 @@ def bloc_live_auto_actualise():
 
                 if not mode_auto_sol:
                     if st.button(
-                        f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
-                        key="btn_manual_take_sol_master_v16",
+                        t("take_breakout_btn", user=trader_courant),
+                        key="btn_manual_take_sol_master_v19",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -1737,18 +1946,16 @@ def bloc_live_auto_actualise():
                             trader_courant, ajouter_pos_manuel
                         )
                         st.success(
-                            f"✅ Position Solana Master ouverte pour {trader_courant} !"
+                            f"✅ Position Solana Master ({trader_courant}) OK !"
                         )
                         st.rerun()
             elif not sq_on and not bo:
-                st.info(
-                    "⚪ Marché en transition : surveillance du prochain Squeeze ou Breakout."
-                )
+                st.info(t("regime_trans"))
         else:
-            st.warning("⏳ Connexion au flux MEXC Solana...")
+            st.warning("⏳ Live MEXC SOL Feed...")
 
     # ======================================================
-    # 🤖 ONGLET AUTO : CHRONOMÈTRE RÉPARÉ + BOUTON CLÔTURE
+    # 🤖 ONGLET AUTO : POSITIONS OUVERTES & LIENS DIRECTS
     # ======================================================
     with tab_auto:
         c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
@@ -1757,15 +1964,15 @@ def bloc_live_auto_actualise():
 
         with col_t1:
             st.markdown(
-                f"💰 **Solde Réalisé :** `{c_fresh['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
+                f"💰 <b>{t('balance_realized')}</b> `{c_fresh['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
                 unsafe_allow_html=True,
             )
 
         with col_t2:
             nouvel_etat = st.toggle(
-                "⚡ AUTO MULTI-RADAR",
+                t("toggle_auto_radar"),
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v16",
+                key="toggle_auto_live_radar_v19",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1776,7 +1983,7 @@ def bloc_live_auto_actualise():
                 st.rerun()
 
         if c_fresh.get("positions"):
-            st.markdown("#### 🚀 Positions Ouvertes en Direct :")
+            st.markdown(f"#### {t('open_pos_title')}")
             for cle, pos in list(c_fresh["positions"].items()):
                 strat_nom = pos.get("strategie", "Auto")
                 paire_nom = pos.get(
@@ -1792,10 +1999,9 @@ def bloc_live_auto_actualise():
                 tp1_val = float(pos.get("tp1", 0))
                 tp2_val = float(pos.get("tp2", 0))
                 tp1_statut = (
-                    "✅ Breakeven" if pos.get("tp1_hit", False) else "⏳ Attente"
+                    t("breakeven") if pos.get("tp1_hit", False) else t("waiting")
                 )
 
-                # Calcul du PnL flottant direct
                 p_actuel = prix_mexc_direct.get(paire_nom, entree_val)
                 if entree_val > 0:
                     if "LONG" in sens_nom:
@@ -1812,7 +2018,6 @@ def bloc_live_auto_actualise():
 
                 pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
 
-                # 🌟 CALCUL ROBUSTE DU CHRONO AVEC RÉPARATION AUTOMATIQUE
                 ts_open = pos.get("open_timestamp")
                 if not ts_open:
                     date_str = pos.get("date_open")
@@ -1824,7 +2029,6 @@ def bloc_live_auto_actualise():
                                 hour=h, minute=m, second=s_val, microsecond=0
                             )
                             ts_open = t_pos.timestamp()
-                            # Correction en dur dans la position
                             pos["open_timestamp"] = ts_open
                         except Exception:
                             ts_open = maintenant_ts - 120
@@ -1836,12 +2040,13 @@ def bloc_live_auto_actualise():
                 duree_sec = int(max(0, maintenant_ts - ts_open))
                 hours, remainder = divmod(duree_sec, 3600)
                 mins, secs = divmod(remainder, 60)
-                if hours > 0:
-                    chrono_str = f"{hours}h {mins}m {secs}s"
-                elif mins > 0:
-                    chrono_str = f"{mins}m {secs}s"
-                else:
-                    chrono_str = f"{secs}s"
+                chrono_str = (
+                    f"{hours}h {mins}m"
+                    if hours > 0
+                    else (f"{mins}m {secs}s" if mins > 0 else f"{secs}s")
+                )
+
+                url_mexc_pos = get_mexc_futures_url(paire_nom)
 
                 col_p1, col_p2 = st.columns([4, 1])
                 with col_p1:
@@ -1855,17 +2060,18 @@ def bloc_live_auto_actualise():
                             </span>
                         </div>
                         <hr style="border-color:#30363D; margin:6px 0;">
-                        🎯 <b>Entrée :</b> {formater_prix(entree_val)} | 🛑 <b>SL :</b> {formater_prix(sl_val)} | ⏱️ <b>En cours depuis :</b> <span class="timer-badge">{chrono_str}</span><br>
-                        💰 <b>TP1 :</b> {formater_prix(tp1_val)} [{tp1_statut}] | 🚀 <b>TP2 :</b> {formater_prix(tp2_val)}
+                        🎯 <b>{t('optimal_entry')}</b> {formater_prix(entree_val)} | 🛑 <b>{t('stop_loss')}</b> {formater_prix(sl_val)} | ⏱️ <b>{t('running_since')}</b> <span class="timer-badge">{chrono_str}</span><br>
+                        💰 <b>TP1 :</b> {formater_prix(tp1_val)} [{tp1_statut}] | 🚀 <b>TP2 :</b> {formater_prix(tp2_val)}<br>
+                        <a href="{url_mexc_pos}" target="_blank" class="mexc-btn">{t('manage_on_mexc', pair=paire_nom)}</a>
                     </div>
                     """,
                         unsafe_allow_html=True,
                     )
                 with col_p2:
                     if st.button(
-                        f"🛑 Couper",
-                        key=f"btn_close_pos_{cle}",
-                        help=f"Clôturer immédiatement {paire_nom} au cours actuel",
+                        t("cut_btn"),
+                        key=f"btn_close_pos_{cle}_v19",
+                        help=f"Close {paire_nom} at market price",
                     ):
 
                         def couper_pos(c):
@@ -1889,15 +2095,15 @@ def bloc_live_auto_actualise():
                         mettre_a_jour_un_compte(trader_courant, couper_pos)
                         st.rerun()
         else:
-            st.caption("👀 Aucune position ouverte pour le moment.")
+            st.caption(t("no_open_pos"))
 
         if c_fresh.get("historique"):
-            st.markdown("#### 📜 Derniers Trades Clôturés :")
+            st.markdown(f"#### {t('recent_closed')}")
             st.dataframe(
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v16"):
+        if st.button(t("reset_btn"), key="btn_reset_v19"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1911,7 +2117,7 @@ def bloc_live_auto_actualise():
             st.rerun()
 
     # ======================================================
-    # ⚡ ONGLET RADAR (AVEC TIMER & DÉTECTEUR DE SIGNAL PÉRIMÉ)
+    # ⚡ ONGLET RADAR MULTI-TIMEFRAME
     # ======================================================
     with tab_radar:
         memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
@@ -1930,6 +2136,7 @@ def bloc_live_auto_actualise():
                     )
                     p_reel = prix_mexc_direct.get(p, info["prix_entree"])
                     p_entree = info["prix_entree"]
+                    url_mexc_signal = get_mexc_futures_url(p)
 
                     is_long = "LONG" in info["signal"]
                     if is_long:
@@ -1940,21 +2147,24 @@ def bloc_live_auto_actualise():
                         est_perime = ecart_pct > 0.0025
 
                     badge_statut = (
-                        '<span class="status-expired">⚠️ PÉRIMÉ (Le cours est déjà parti)</span>'
+                        f'<span class="status-expired">{t("status_expired")}</span>'
                         if est_perime
-                        else '<span class="status-valid">🟢 ENTRÉE VALIDE</span>'
+                        else f'<span class="status-valid">{t("status_valid")}</span>'
                     )
 
                     st.markdown(
                         f"""
                     <div class="{classe}">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-size:15px; font-weight:bold;">⚡ SIGNAL {info['signal']} : {p} ({info['motif']})</span>
+                            <span style="font-size:15px; font-weight:bold;">⚡ {info['signal']} : {p} ({info['motif']})</span>
                             <span>{badge_statut} <span class="timer-badge">⏱️ {temps_restant}s</span></span>
                         </div>
                         <hr style="border-color:rgba(255,255,255,0.1); margin:6px 0;">
-                        🎯 <b>Entrée Optimale (Limit) :</b> <span class="opt-price">{formater_prix(info['prix_entree'])} USDT</span> (Cours actuel : {formater_prix(p_reel)})<br>
-                        🛑 <b>SL :</b> {formater_prix(info['sl'])} | 💰 <b>TP1 :</b> {formater_prix(info['tp1'])} | 🚀 <b>TP2 :</b> {formater_prix(info['tp2'])}
+                        🎯 <b>{t('optimal_entry')}</b> <span class="opt-price">{formater_prix(info['prix_entree'])} USDT</span> ({t('price_col')}: {formater_prix(p_reel)})<br>
+                        🛑 <b>{t('stop_loss')}</b> {formater_prix(info['sl'])} | 💰 <b>TP1 :</b> {formater_prix(info['tp1'])} | 🚀 <b>TP2 :</b> {formater_prix(info['tp2'])}<br>
+                        <div style="margin-top:6px;">
+                            <a href="{url_mexc_signal}" target="_blank" class="mexc-btn">{t('trader_on_mexc', pair=p)}</a>
+                        </div>
                     </div>
                     """,
                         unsafe_allow_html=True,
@@ -1962,8 +2172,13 @@ def bloc_live_auto_actualise():
 
                     if not est_perime:
                         if st.button(
-                            f"⚡ Prendre {info['signal']} sur {p} ({trader_courant})",
-                            key=f"btn_radar_take_{p}_v16",
+                            t(
+                                "take_signal_btn",
+                                sens=info["signal"],
+                                pair=p,
+                                user=trader_courant,
+                            ),
+                            key=f"btn_radar_take_{p}_v19",
                         ):
 
                             def prendre_pos_radar(c):
@@ -1996,7 +2211,7 @@ def bloc_live_auto_actualise():
                                 trader_courant, prendre_pos_radar
                             )
                             st.success(
-                                f"✅ Position {p} ouverte pour {trader_courant} !"
+                                f"✅ Position {p} ({trader_courant}) OK !"
                             )
                             st.rerun()
 
@@ -2005,15 +2220,14 @@ def bloc_live_auto_actualise():
         }
         lignes_tableau = []
 
-        for paire_raw in PAIRES_RADAR:
-            nom_court = paire_raw.split("-")[0]
+        for nom_court in bases_actives:
             paire_nom = f"{nom_court}/USDT"
             d = donnees_dict.get(paire_nom, {})
 
             statut = (
                 memoire_active[paire_nom]["signal"]
                 if paire_nom in memoire_active
-                else "VEILLE ⚪"
+                else t("veille")
             )
             prix_reel_mexc = prix_mexc_direct.get(
                 paire_nom, d.get("Prix", "N/A")
@@ -2022,9 +2236,9 @@ def bloc_live_auto_actualise():
 
             lignes_tableau.append(
                 {
-                    "Paire": paire_nom,
-                    "Prix Actuel": formater_prix(prix_reel_mexc),
-                    "Statut": statut,
+                    t("pair_col"): paire_nom,
+                    t("price_col"): formater_prix(prix_reel_mexc),
+                    t("status_col"): statut,
                     "Range 15m": mtf["range_15m"],
                     "RSI 15m": mtf["rsi_15m"],
                     "Range 30m": mtf["range_30m"],
@@ -2045,12 +2259,12 @@ def bloc_live_auto_actualise():
         )
 
     with tab_ia:
-        ia_stats = charger_experience_ia_collective()
+        ia_stats = charger_experience_ia_collective(bases_actives)
         st.markdown(
             f"""
         <div class="xp-card">
-            <b>🏆 Niveau : <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP Partagés)<br>
-            <small>Chaque trade améliore les filtres de tout le groupe.</small>
+            <b>{t('ia_level')} <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP)<br>
+            <small>{t('ia_sub')}</small>
         </div>
         """,
             unsafe_allow_html=True,
@@ -2069,7 +2283,7 @@ def bloc_live_auto_actualise():
             liste_classement.append(
                 {
                     "Trader": f"👤 {nom}",
-                    "Solde": f"{c['solde']:.1f} $",
+                    "Solde / Balance": f"{c['solde']:.1f} $",
                     "PnL": f"{pnl:+.1f} $",
                     "WR": f"{wr:.0f}%",
                     "Trades": trades_nb,
@@ -2085,19 +2299,19 @@ def bloc_live_auto_actualise():
     with tab_calc:
         c1, c2 = st.columns(2)
         paire_sel = c1.selectbox(
-            "Paire", [f"{p.split('-')[0]}/USDT" for p in PAIRES_RADAR]
+            t("pair_col"), [f"{p}/USDT" for p in bases_actives]
         )
-        sens_sel = c2.radio("Sens", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
+        sens_sel = c2.radio("Sens / Direction", ["LONG 🟢", "SHORT 🔴"], horizontal=True)
         is_long = "LONG" in sens_sel
 
         col_e, col_sl = st.columns(2)
         p_entree = col_e.number_input(
-            "Entrée ($)", value=106.20, step=0.01, format="%.5f"
+            t("calc_entry"), value=106.20, step=0.01, format="%.5f"
         )
         p_sl = col_sl.number_input(
-            "SL ($)", value=105.90, step=0.01, format="%.5f"
+            t("calc_sl"), value=105.90, step=0.01, format="%.5f"
         )
-        marge_fixe = st.number_input("Marge (USDT)", value=10.0, step=5.0)
+        marge_fixe = st.number_input(t("calc_margin"), value=10.0, step=5.0)
 
         if (is_long and p_sl < p_entree) or ((not is_long) and p_sl > p_entree):
             distance = abs(p_entree - p_sl)
@@ -2125,14 +2339,14 @@ def bloc_live_auto_actualise():
             st.markdown(
                 f"""
             <div class="metric-card">
-                <b>Marge :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>SL :</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
+                <b>{t('calc_margin')} :</b> {marge_fixe:.1f} USDT (x{levier_suggere}) | <b>{t('stop_loss')}</b> <span style="color:#FF5252;">-{perte_sl:.2f}$ ({pct_dist:.2%})</span><br>
                 🎯 <b>TP1 :</b> {formater_prix(tp1)} | 🚀 <b>TP2 Runner :</b> {formater_prix(tp2)}<br>
-                💀 <b>Liquidation :</b> {formater_prix(p_liq)}
+                💀 <b>{t('calc_liquidation')}</b> {formater_prix(p_liq)}
             </div>
             """,
                 unsafe_allow_html=True,
             )
 
 
-# Lancement du fragment
+# Lancement du fragment fluide
 bloc_live_auto_actualise()
