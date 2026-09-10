@@ -25,7 +25,7 @@ def obtenir_date_heure_paris(format_str="%H:%M:%S"):
 
 
 st.set_page_config(
-    page_title="Cockpit Trader Pro Live",
+    page_title="Cockpit Trader Pro Live - Multi-Timeframe Radar",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -136,10 +136,10 @@ def obtenir_prix_live_multi_sources():
 
 
 # ==========================================================
-# 📥 FALLBACK MEXC DIRECT POUR LES BOUGIES
+# 📥 FALLBACK MEXC DIRECT BOUGIES
 # ==========================================================
 @st.cache_data(ttl=8)
-def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=50):
+def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=60):
     try:
         url = f"https://api.mexc.com/api/v3/klines?symbol={symbol_base}USDT&interval={interval}&limit={limit}"
         res = requests.get(
@@ -167,6 +167,107 @@ def obtenir_bougies_mexc_direct(symbol_base, interval="15m", limit=50):
         return df[["Open", "High", "Low", "Close", "Volume"]]
     except Exception:
         return None
+
+
+# ==========================================================
+# 📊 CALCULATEUR MULTI-TIMEFRAME (15m, 30m, 1h, 4h, 1j)
+# ==========================================================
+def calculer_rsi_series(series, period=14):
+    d = series.diff()
+    g = d.where(d > 0, 0).rolling(period).mean()
+    l = (-d.where(d < 0, 0)).rolling(period).mean()
+    rs = g / (l + 1e-9)
+    return 100 - (100 / (1 + rs))
+
+
+@st.cache_data(ttl=15)
+def obtenir_stats_mtf_radar(nom_court):
+    stats = {
+        "range_15m": "N/A",
+        "rsi_15m": "50.0",
+        "range_30m": "N/A",
+        "rsi_30m": "50.0",
+        "range_1h": "N/A",
+        "rsi_1h": "50.0",
+        "range_4h": "N/A",
+        "rsi_4h": "50.0",
+        "range_1d": "N/A",
+        "rsi_1d": "50.0",
+    }
+    try:
+        # Téléchargement bougies 15m (100 bougies = 25 heures d'historique)
+        df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 120)
+        # Téléchargement bougies 1d (30 bougies journalières)
+        df_1d = obtenir_bougies_mexc_direct(nom_court, "1d", 30)
+
+        if df_15 is not None and len(df_15) >= 20:
+            # 1. Calcul 15m
+            rsi_15 = float(calculer_rsi_series(df_15["Close"], 14).iloc[-1])
+            high_15 = float(df_15["High"].iloc[-16:].max())
+            low_15 = float(df_15["Low"].iloc[-16:].min())
+            stats["range_15m"] = f"[{formater_prix(low_15)} - {formater_prix(high_15)}]"
+            stats["rsi_15m"] = f"{rsi_15:.1f}"
+
+            # 2. Resample 30m
+            df_30 = (
+                df_15.resample("30min")
+                .agg({"High": "max", "Low": "min", "Close": "last"})
+                .dropna()
+            )
+            if len(df_30) >= 14:
+                rsi_30 = float(calculer_rsi_series(df_30["Close"], 14).iloc[-1])
+                high_30 = float(df_30["High"].iloc[-16:].max())
+                low_30 = float(df_30["Low"].iloc[-16:].min())
+                stats["range_30m"] = (
+                    f"[{formater_prix(low_30)} - {formater_prix(high_30)}]"
+                )
+                stats["rsi_30m"] = f"{rsi_30:.1f}"
+
+            # 3. Resample 1h
+            df_1h = (
+                df_15.resample("1h")
+                .agg({"High": "max", "Low": "min", "Close": "last"})
+                .dropna()
+            )
+            if len(df_1h) >= 14:
+                rsi_1h = float(calculer_rsi_series(df_1h["Close"], 14).iloc[-1])
+                high_1h = float(df_1h["High"].iloc[-24:].max())
+                low_1h = float(df_1h["Low"].iloc[-24:].min())
+                stats["range_1h"] = (
+                    f"[{formater_prix(low_1h)} - {formater_prix(high_1h)}]"
+                )
+                stats["rsi_1h"] = f"{rsi_1h:.1f}"
+
+            # 4. Resample 4h
+            df_4h = (
+                df_15.resample("4h")
+                .agg({"High": "max", "Low": "min", "Close": "last"})
+                .dropna()
+            )
+            if len(df_4h) >= 5:
+                rsi_4h = float(
+                    calculer_rsi_series(df_4h["Close"], min(len(df_4h) - 1, 14)).iloc[-1]
+                )
+                high_4h = float(df_4h["High"].iloc[-12:].max())
+                low_4h = float(df_4h["Low"].iloc[-12:].min())
+                stats["range_4h"] = (
+                    f"[{formater_prix(low_4h)} - {formater_prix(high_4h)}]"
+                )
+                stats["rsi_4h"] = f"{rsi_4h:.1f}"
+
+        # 5. Calcul 1j (Daily)
+        if df_1d is not None and len(df_1d) >= 14:
+            rsi_1d = float(calculer_rsi_series(df_1d["Close"], 14).iloc[-1])
+            high_1d = float(df_1d["High"].iloc[-14:].max())
+            low_1d = float(df_1d["Low"].iloc[-14:].min())
+            stats["range_1d"] = (
+                f"[{formater_prix(low_1d)} - {formater_prix(high_1d)}]"
+            )
+            stats["rsi_1d"] = f"{rsi_1d:.1f}"
+
+    except Exception:
+        pass
+    return stats
 
 
 # ==========================================================
@@ -244,7 +345,7 @@ def charger_experience_ia_collective():
         },
         "lecons_apprises": [
             "ADN 1M XP Validé sur Solana : Grid 0.35% + Squeeze 15m (Calmar 110.43).",
-            "Passerelle MEXC Directe connectée pour PIXEL/USDT.",
+            "Radar Multi-Timeframe Actif : 15m, 30m, 1h, 4h, 1j.",
         ],
     }
 
@@ -398,6 +499,8 @@ def analyser_solana_master_live():
         df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
 
         last_c = df.iloc[-1]
+        prev_c = df.iloc[-2]
+
         p = float(last_c["Close"])
         atr = float(last_c["ATR"])
         sq_on = bool(last_c["Squeeze_ON"])
@@ -479,7 +582,6 @@ def detecter_setup_a_plus_du_jour(donnees_globales):
                 else None
             )
 
-            # Fallback MEXC si absent sur Yahoo Finance (ex: PIXEL)
             if df_15 is None or len(df_15) < 20:
                 df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
             if df_1 is None or len(df_1) < 20:
@@ -620,7 +722,6 @@ def analyser_profil(profil_court, donnees_globales):
                 else None
             )
 
-            # 🌟 FALLBACK DIRECT MEXC POUR PIXEL OU AUTRES ALTCOINS
             if df_15 is None or len(df_15) < 20:
                 df_15 = obtenir_bougies_mexc_direct(nom_court, "15m", 45)
             if df_1 is None or len(df_1) < 20:
@@ -815,7 +916,6 @@ def analyser_profil(profil_court, donnees_globales):
                     "Prix": prix,
                     "High": high,
                     "Low": low,
-                    "Range_Str": f"[{formater_prix(low_s_15)} - {formater_prix(high_s_15)}]",
                     "Signal_Detecte": signal,
                     "Motif": motif,
                     "Motif_Famille": motif_famille,
@@ -886,7 +986,7 @@ compte_actif = comptes_actuels.get(
 )
 
 # ==========================================================
-# 🎛️ EN-TÊTE FIXE DU COCKPIT D'ORIGINE
+# 🎛️ EN-TÊTE DU COCKPIT
 # ==========================================================
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
@@ -966,7 +1066,7 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ FLUIDE
+# 🌟 FRAGMENT AUTO-ACTUALISÉ
 # ==========================================================
 @st.fragment(run_every="8s")
 def bloc_live_auto_actualise():
@@ -975,7 +1075,7 @@ def bloc_live_auto_actualise():
     donnees_globales = charger_donnees_marche_globales()
     sol_master_data = analyser_solana_master_live()
 
-    # 1. Setup A+ Royal du jour
+    # 1. Setup A+ Royal
     setup_a_plus = detecter_setup_a_plus_du_jour(donnees_globales)
     if setup_a_plus:
         st.markdown(
@@ -1451,7 +1551,7 @@ def bloc_live_auto_actualise():
 
     mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
-    # 5. LES ONGLETS DU COCKPIT D'ORIGINE
+    # 5. ONGLETS DU COCKPIT
     tab_auto, tab_radar, tab_sol_master, tab_ia, tab_classement, tab_calc = (
         st.tabs(
             [
@@ -1482,7 +1582,7 @@ def bloc_live_auto_actualise():
             mode_auto_sol = st.toggle(
                 "⚡ AUTOPILOTE SOLANA",
                 value=c_fresh.get("solana_master_auto", False),
-                key="toggle_solana_master_auto_switch_v11",
+                key="toggle_solana_master_auto_switch_v12",
             )
             if mode_auto_sol != c_fresh.get("solana_master_auto", False):
 
@@ -1536,7 +1636,6 @@ def bloc_live_auto_actualise():
                 unsafe_allow_html=True,
             )
 
-            # MODE 1 : GRID MAKER (0% FEES)
             if sq_on:
                 st.markdown(
                     f"#### 🟢 Grille Maker 0.35% (Ordres Post-Only MEXC) :"
@@ -1557,7 +1656,6 @@ def bloc_live_auto_actualise():
                             unsafe_allow_html=True,
                         )
 
-            # MODE 2 : SQUEEZE BREAKOUT
             if bo:
                 st.markdown(
                     f"""
@@ -1573,7 +1671,7 @@ def bloc_live_auto_actualise():
                 if not mode_auto_sol:
                     if st.button(
                         f"⚡ Prendre ce Breakout sur mon compte ({trader_courant})",
-                        key="btn_manual_take_sol_master_v11",
+                        key="btn_manual_take_sol_master_v12",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -1623,7 +1721,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 "⚡ AUTO MULTI-RADAR",
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v11",
+                key="toggle_auto_live_radar_v12",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -1669,7 +1767,7 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v11"):
+        if st.button("🔄 Reset solde à 1000 USDT", key="btn_reset_v12"):
 
             def reset_c(c):
                 c["solde"] = 1000.0
@@ -1682,6 +1780,9 @@ def bloc_live_auto_actualise():
             mettre_a_jour_un_compte(trader_courant, reset_c)
             st.rerun()
 
+    # ======================================================
+    # ⚡ ONGLET RADAR MULTI-TIMEFRAME (15m, 30m, 1h, 4h, 1j)
+    # ======================================================
     with tab_radar:
         memoire_active = st.session_state.memoire_par_profil.get(profil_cle, {})
         if memoire_active:
@@ -1711,9 +1812,10 @@ def bloc_live_auto_actualise():
         }
         lignes_tableau = []
 
-        # 🌟 GARANTIT L'AFFICHAGE DE TOUTES LES PAIRES (Y COMPRIS PIXEL)
+        # 🌟 PARCOURS TOUTES LES PAIRES AVEC STATS MULTI-TIMEFRAME
         for paire_raw in PAIRES_RADAR:
-            paire_nom = f"{paire_raw.split('-')[0]}/USDT"
+            nom_court = paire_raw.split("-")[0]
+            paire_nom = f"{nom_court}/USDT"
             d = donnees_dict.get(paire_nom, {})
 
             statut = (
@@ -1725,17 +1827,32 @@ def bloc_live_auto_actualise():
                 paire_nom, d.get("Prix", "N/A")
             )
 
+            # Calcul multi-timeframe (15m, 30m, 1h, 4h, 1j)
+            mtf = obtenir_stats_mtf_radar(nom_court)
+
             lignes_tableau.append(
                 {
                     "Paire": paire_nom,
                     "Prix Actuel": formater_prix(prix_reel_mexc),
                     "Statut": statut,
-                    "Range 15m": d.get("Range_Str", "Calcul..."),
-                    "RSI": d.get("RSI", "50.0"),
+                    "Range 15m": mtf["range_15m"],
+                    "RSI 15m": mtf["rsi_15m"],
+                    "Range 30m": mtf["range_30m"],
+                    "RSI 30m": mtf["rsi_30m"],
+                    "Range 1h": mtf["range_1h"],
+                    "RSI 1h": mtf["rsi_1h"],
+                    "Range 4h": mtf["range_4h"],
+                    "RSI 4h": mtf["rsi_4h"],
+                    "Range 1j": mtf["range_1d"],
+                    "RSI 1j": mtf["rsi_1d"],
                 }
             )
 
-        st.dataframe(pd.DataFrame(lignes_tableau), hide_index=True)
+        st.dataframe(
+            pd.DataFrame(lignes_tableau),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     with tab_ia:
         ia_stats = charger_experience_ia_collective()
