@@ -2583,4 +2583,3 @@ def bloc_live_auto_actualise():
 
 # Lancement du fragment fluide
 bloc_live_auto_actualise()
-```
