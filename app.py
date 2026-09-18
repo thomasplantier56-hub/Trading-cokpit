@@ -288,10 +288,8 @@ I18N = {
     },
 }
 
-FICHIER_COMPTES = "comptes_traders.json"
 FICHIER_IA = "experience_ia_collective.json"
 FICHIER_PAIRES = "paires_radar.json"
-
 LISTE_PROFILS = ["Conservateur", "Intraday", "Scalping 1m", "Ultra-Scalp"]
 analyzer = SentimentIntensityAnalyzer()
 
@@ -302,6 +300,82 @@ PARAMETRES_STRATS = {
     "Conservateur": {"levier": 20, "marge": 100.0, "max_duree_sec": 7200},
     "Master": {"levier": 25, "marge": 100.0, "max_duree_sec": 5400},
 }
+
+# ==========================================================
+# 👥 GESTION ATOMIQUE ET CLOISONNÉE PAR TRADER (ANTI-ÉCRASEMENT)
+# ==========================================================
+# 🌟 Vos vrais capitaux initiaux restaurés
+TRADERS_INITIAUX = {
+    "Thomas": {"solde": 1167.37, "capital_initial": 1000.0},
+    "Alex": {"solde": 1000.0, "capital_initial": 1000.0},
+    "Yeepse": {"solde": 1207.00, "capital_initial": 1000.0},
+}
+
+
+def charger_un_compte(nom_trader):
+    """Charge de manière strictement isolée le compte d'un seul trader."""
+    # 1. Tentative Cloud isolée
+    c_cloud = cloud_get(f"compte_trader_{nom_trader}")
+    if c_cloud and isinstance(c_cloud, dict) and "solde" in c_cloud:
+        return c_cloud
+
+    # 2. Tentative Fichier Local isolé
+    f_local = f"compte_{nom_trader}.json"
+    if os.path.exists(f_local):
+        try:
+            with open(f_local, "r", encoding="utf-8") as f:
+                c = json.load(f)
+                if isinstance(c, dict) and "solde" in c:
+                    return c
+        except Exception:
+            pass
+
+    # 3. Création par défaut avec les gains restaurés
+    init_vals = TRADERS_INITIAUX.get(
+        nom_trader, {"solde": 1000.0, "capital_initial": 1000.0}
+    )
+    c_new = {
+        "solde": init_vals["solde"],
+        "capital_initial": init_vals["capital_initial"],
+        "auto_actif": False,
+        "master_auto": False,
+        "positions": {},
+        "historique": [],
+    }
+    sauvegarder_un_compte(nom_trader, c_new)
+    return c_new
+
+
+def sauvegarder_un_compte(nom_trader, data):
+    """Sauvegarde UNIQUEMENT le compte de ce trader (impossible d'écraser les autres)."""
+    if not isinstance(data, dict) or "solde" not in data:
+        return
+    cloud_set(f"compte_trader_{nom_trader}", data)
+    try:
+        with open(f"compte_{nom_trader}.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def charger_tous_les_comptes():
+    """Charge la liste complète de tous les comptes pour le classement sans collision."""
+    traders_connus = list(TRADERS_INITIAUX.keys())
+    # Récupération d'éventuels profils créés dynamiquement
+    custom_traders = cloud_get("liste_noms_traders") or []
+    all_traders = list(dict.fromkeys(traders_connus + custom_traders))
+
+    comptes = {}
+    for t_nom in all_traders:
+        comptes[t_nom] = charger_un_compte(t_nom)
+    return comptes
+
+
+def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
+    """Met à jour atomiquement un seul compte sans toucher à la mémoire des autres."""
+    compte = charger_un_compte(nom_trader)
+    modificateur_fn(compte)
+    sauvegarder_un_compte(nom_trader, compte)
 
 
 # ==========================================================
@@ -521,101 +595,8 @@ def obtenir_stats_mtf_radar(nom_court):
 
 
 # ==========================================================
-# 👥 GESTION DES COMPTES (AUTO-RÉPARATION DU FORMAT)
+# 🧠 CERVEAU IA COLLECTIF
 # ==========================================================
-def valider_format_comptes(data):
-    """Vérifie si les données sont un dictionnaire valide de comptes et non un compte unique."""
-    if not isinstance(data, dict):
-        return False
-    if "solde" in data or "capital_initial" in data:
-        # Fichier corrompu par un objet de compte unique
-        return False
-    for k, v in data.items():
-        if not isinstance(v, dict) or "solde" not in v:
-            return False
-    return True
-
-
-def charger_tous_les_comptes():
-    comptes_defaut = {
-        "Thomas": {
-            "solde": 1000.0,
-            "capital_initial": 1000.0,
-            "auto_actif": False,
-            "master_auto": False,
-            "positions": {},
-            "historique": [],
-        },
-        "Alex": {
-            "solde": 1000.0,
-            "capital_initial": 1000.0,
-            "auto_actif": False,
-            "master_auto": False,
-            "positions": {},
-            "historique": [],
-        },
-        "Yeepse": {
-            "solde": 1000.0,
-            "capital_initial": 1000.0,
-            "auto_actif": False,
-            "master_auto": False,
-            "positions": {},
-            "historique": [],
-        },
-    }
-
-    # 1. Tentative Cloud Upstash
-    c_cloud = cloud_get("comptes_traders")
-    if c_cloud and valider_format_comptes(c_cloud):
-        for k, v in comptes_defaut.items():
-            if k not in c_cloud:
-                c_cloud[k] = v
-        return c_cloud
-
-    # 2. Tentative Fichier Local
-    if os.path.exists(FICHIER_COMPTES):
-        try:
-            with open(FICHIER_COMPTES, "r", encoding="utf-8") as f:
-                c_charge = json.load(f)
-                if valider_format_comptes(c_charge):
-                    for k, v in comptes_defaut.items():
-                        if k not in c_charge:
-                            c_charge[k] = v
-                    return c_charge
-        except Exception:
-            pass
-
-    # 3. Réparation automatique immédiate
-    sauvegarder_tous_les_comptes(comptes_defaut)
-    return comptes_defaut
-
-
-def sauvegarder_tous_les_comptes(comptes):
-    if not valider_format_comptes(comptes):
-        return  # Refuse d'écraser avec une structure corrompue
-    cloud_set("comptes_traders", comptes)
-    try:
-        with open(FICHIER_COMPTES, "w", encoding="utf-8") as f:
-            json.dump(comptes, f, indent=4, ensure_ascii=False)
-    except Exception:
-        pass
-
-
-def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
-    comptes = charger_tous_les_comptes()
-    if nom_trader not in comptes:
-        comptes[nom_trader] = {
-            "solde": 1000.0,
-            "capital_initial": 1000.0,
-            "auto_actif": False,
-            "master_auto": False,
-            "positions": {},
-            "historique": [],
-        }
-    modificateur_fn(comptes[nom_trader])
-    sauvegarder_tous_les_comptes(comptes)
-
-
 def charger_experience_ia_collective(bases_actives):
     ia_cloud = cloud_get("experience_ia")
     if ia_cloud and isinstance(ia_cloud, dict):
@@ -646,7 +627,7 @@ def charger_experience_ia_collective(bases_actives):
         },
         "lecons_apprises": [
             "ADN 1M XP Actif : Squeeze 15m + Grille 0.35% Maker (Profit Factor 3.08).",
-            "Auto-réparation de base de données activée.",
+            "Mémoire isolée et cloisonnée pour Thomas, Alex et Yeepse.",
         ],
     }
 
@@ -1168,6 +1149,7 @@ def analyser_profil(profil_court, donnees_globales, bases_actives):
                     sl = opt_p + dist
                     tp1 = opt_p - (1.8 * dist)
                     tp2 = opt_p - (3.8 * dist)
+
                 elif (
                     (sweep_15_l or prix > ema_50_15)
                     and mss_haussier
@@ -1217,8 +1199,7 @@ def analyser_profil(profil_court, donnees_globales, bases_actives):
 # ==========================================================
 # 👤 GESTION DU PROFIL UTILISATEUR & LANGUE
 # ==========================================================
-comptes_actuels = charger_tous_les_comptes()
-liste_noms = list(comptes_actuels.keys())
+liste_noms = list(charger_tous_les_comptes().keys())
 paires_actives = charger_paires_radar()
 
 if "langue" not in st.session_state:
@@ -1261,17 +1242,11 @@ with st.sidebar.expander(f"➕ {t('create_profile')}"):
     nouveau_nom = st.text_input(t("input_name")).strip()
     if st.button(t("validate")):
         if nouveau_nom:
-            comptes_frais = charger_tous_les_comptes()
-            if nouveau_nom not in comptes_frais:
-                comptes_frais[nouveau_nom] = {
-                    "solde": 1000.0,
-                    "capital_initial": 1000.0,
-                    "auto_actif": False,
-                    "master_auto": False,
-                    "positions": {},
-                    "historique": [],
-                }
-                sauvegarder_tous_les_comptes(comptes_frais)
+            c_frais = charger_un_compte(nouveau_nom)
+            custom_traders = cloud_get("liste_noms_traders") or []
+            if nouveau_nom not in custom_traders:
+                custom_traders.append(nouveau_nom)
+                cloud_set("liste_noms_traders", custom_traders)
             st.session_state.trader_session = nouveau_nom
             st.rerun()
 
@@ -1325,17 +1300,7 @@ with st.sidebar.expander(f"🪙 {t('manage_pairs')}", expanded=False):
             sauvegarder_paires_radar(p_actuelles)
             st.rerun()
 
-compte_actif = comptes_actuels.get(
-    trader_courant,
-    {
-        "solde": 1000.0,
-        "capital_initial": 1000.0,
-        "auto_actif": False,
-        "master_auto": False,
-        "positions": {},
-        "historique": [],
-    },
-)
+compte_actif = charger_un_compte(trader_courant)
 
 # ==========================================================
 # 🎛️ EN-TÊTE DU COCKPIT
@@ -1343,7 +1308,8 @@ compte_actif = comptes_actuels.get(
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.markdown(
-        f"### ⚡ {t('cockpit_title')} <span class='user-badge'>👤 {trader_courant}</span>",
+        f"### ⚡ {t('cockpit_title')} <span class='user-badge'>👤"
+        f" {trader_courant}</span>",
         unsafe_allow_html=True,
     )
 with col_h2:
@@ -1412,7 +1378,7 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ CORRIGÉ
+# 🌟 FRAGMENT AUTO-ACTUALISÉ AVEC GESTION DU RISQUE CORRIGÉE
 # ==========================================================
 @st.fragment(run_every="8s")
 def bloc_live_auto_actualise():
@@ -1572,9 +1538,7 @@ def bloc_live_auto_actualise():
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. MOTEUR AUTO-TRADER (BUG DOUBLE SAUVEGARDE SUPPRIMÉ)
-    compte_actuel = charger_tous_les_comptes().get(trader_courant, compte_actif)
-
+    # 4. MOTEUR AUTO-TRADER ATOMIQUE (COMPTE ISOLÉ)
     def executer_moteur_complet(compte):
         heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
         ts_maintenant = time.time()
@@ -2014,6 +1978,7 @@ def bloc_live_auto_actualise():
                             "open_timestamp": ts_maintenant,
                         }
 
+    # Mise à jour ISOLÉE de ce compte uniquement
     mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
     # 5. ONGLETS DU COCKPIT BILINGUE
@@ -2032,7 +1997,7 @@ def bloc_live_auto_actualise():
     # 👑 ONGLET CRYPTO MASTER MULTI-PAIRES (MODÈLE 100$)
     # ======================================================
     with tab_master:
-        c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
+        c_fresh = charger_un_compte(trader_courant)
         col_sm1, col_sm2 = st.columns([3, 2])
         with col_sm1:
             st.markdown(
@@ -2044,7 +2009,7 @@ def bloc_live_auto_actualise():
             mode_auto_master = st.toggle(
                 t("toggle_master_auto"),
                 value=c_fresh.get("master_auto", False),
-                key="toggle_master_auto_switch_v23",
+                key="toggle_master_auto_switch_v24",
             )
             if mode_auto_master != c_fresh.get("master_auto", False):
 
@@ -2157,7 +2122,7 @@ def bloc_live_auto_actualise():
                 if not mode_auto_master:
                     if st.button(
                         t("take_breakout_btn", user=trader_courant),
-                        key=f"btn_manual_take_master_{choix_crypto_master}_v23",
+                        key=f"btn_manual_take_master_{choix_crypto_master}_v24",
                     ):
 
                         def ajouter_pos_manuel(c):
@@ -2200,7 +2165,7 @@ def bloc_live_auto_actualise():
     # 🤖 ONGLET AUTO : POSITIONS OUVERTES & LIENS DIRECTS
     # ======================================================
     with tab_auto:
-        c_fresh = charger_tous_les_comptes().get(trader_courant, compte_actif)
+        c_fresh = charger_un_compte(trader_courant)
         col_t1, col_t2 = st.columns([2, 1])
         pnl_auto = c_fresh["solde"] - c_fresh["capital_initial"]
 
@@ -2216,7 +2181,7 @@ def bloc_live_auto_actualise():
             nouvel_etat = st.toggle(
                 t("toggle_auto_radar"),
                 value=c_fresh.get("auto_actif", False),
-                key="toggle_auto_live_radar_v23",
+                key="toggle_auto_live_radar_v24",
             )
             if nouvel_etat != c_fresh.get("auto_actif", False):
 
@@ -2294,7 +2259,7 @@ def bloc_live_auto_actualise():
                 with col_p2:
                     if st.button(
                         t("cut_btn"),
-                        key=f"btn_close_pos_{cle}_v23",
+                        key=f"btn_close_pos_{cle}_v24",
                         help=f"Close {paire_nom} at market price",
                     ):
 
@@ -2327,10 +2292,13 @@ def bloc_live_auto_actualise():
                 pd.DataFrame(c_fresh["historique"][:6]), hide_index=True
             )
 
-        if st.button(t("reset_btn"), key="btn_reset_v23"):
+        if st.button(t("reset_btn"), key="btn_reset_v24"):
 
             def reset_c(c):
-                c["solde"] = 1000.0
+                init_val = TRADERS_INITIAUX.get(
+                    trader_courant, {"solde": 1000.0}
+                )
+                c["solde"] = init_val["solde"]
                 c["capital_initial"] = 1000.0
                 c["auto_actif"] = False
                 c["master_auto"] = False
@@ -2402,7 +2370,7 @@ def bloc_live_auto_actualise():
                                 pair=p,
                                 user=trader_courant,
                             ),
-                            key=f"btn_radar_take_{p}_v23",
+                            key=f"btn_radar_take_{p}_v24",
                         ):
 
                             def prendre_pos_radar(c):
@@ -2498,7 +2466,7 @@ def bloc_live_auto_actualise():
             st.caption(f"• {lecon}")
 
     # ======================================================
-    # 🏆 CLASSEMENT LIVE : SÉCURISÉ CONTRE LES ERREURS DE TYPE
+    # 🏆 CLASSEMENT LIVE : CLOISONNÉ ET INDÉPENDANT
     # ======================================================
     with tab_classement:
         liste_classement = []
