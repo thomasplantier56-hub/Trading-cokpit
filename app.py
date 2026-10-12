@@ -2693,14 +2693,14 @@ def bloc_live_auto_actualise():
         )
 
     with tab_ia:
-          ia_stats = charger_experience_ia_collective(bases_actives)
+        ia_stats = charger_experience_ia_collective(bases_actives)
         st.markdown(
             f"""
-        <div class="xp-card">
-            <b>{t('ia_level')} <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP)<br>
-            <small>{t('ia_sub')}</small>
-        </div>
-        """,
+            <div class="xp-card">
+                <b>{t('ia_level')} <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP)<br>
+                <small>{t('ia_sub')}</small>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
         
@@ -2716,14 +2716,11 @@ def bloc_live_auto_actualise():
             
             if st.button(f"🔍 Analyser {paire_cible}", type="primary", use_container_width=True):
                 with st.spinner(f"L'Agent Gemini analyse {paire_cible} et scrute le web..."):
-                    # Récupération des données techniques fraîches
                     prix_live = prix_mexc_direct.get(paire_cible, "N/A")
                     stats_mtf = obtenir_stats_mtf_radar(crypto_cible)
                     
-                    # Appel à l'API Gemini
                     resultat_ia = analyser_marche_avec_gemini(paire_cible, prix_live, stats_mtf)
                     
-                    # Stockage temporaire dans la session pour affichage
                     st.session_state.dernier_rapport_ia = resultat_ia
                     st.session_state.derniere_paire_ia = paire_cible
 
