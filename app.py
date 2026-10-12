@@ -1,4 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
+from google import genai
+from google.genai import types
 import csv
 import datetime
 import json
@@ -846,7 +848,62 @@ def charger_fear_and_greed():
     except Exception:
         return 50, "Neutre"
 
-
+# ==========================================================
+# 🤖 AGENT DE TRADING GEMINI (ANALYSE MACRO + TECHNIQUE)
+# ==========================================================
+def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
+    """
+    Interroge Gemini avec les données techniques du cockpit et la recherche Google en direct.
+    Retourne un dictionnaire structuré.
+    """
+    # Récupération de la clé API depuis les secrets Streamlit
+    api_key = st.secrets.get("GEMINI_API_KEY", "VOTRE_CLE_API_ICI")
+    if api_key == "VOTRE_CLE_API_ICI":
+        return {"erreur": "Clé API Gemini manquante dans st.secrets."}
+    
+    try:
+        client = genai.Client(api_key=api_key)
+        nom_crypto = paire.split('/')[0]
+        
+        prompt = f"""
+        Tu es un analyste quantitatif et macro-économique expert en cryptomonnaies.
+        Analyse la paire {paire}.
+        
+        DONNÉES TECHNIQUES EN TEMPS RÉEL :
+        - Prix actuel : {prix_actuel} USDT
+        - RSI 15m : {stats_mtf.get('rsi_15m', 'N/A')}
+        - RSI 1h : {stats_mtf.get('rsi_1h', 'N/A')}
+        - RSI 4h : {stats_mtf.get('rsi_4h', 'N/A')}
+        - Range 1j : {stats_mtf.get('range_1d', 'N/A')}
+        
+        INSTRUCTIONS STRICTES :
+        1. Utilise ton outil de recherche Google pour trouver les actualités des 24 dernières heures concernant le projet {nom_crypto} et la macro-économie globale (taux d'intérêt, régulation).
+        2. Croise le sentiment macro-économique avec les données techniques fournies (RSI, Range).
+        3. Déduis-en une recommandation claire.
+        
+        Tu dois OBLIGATOIREMENT répondre au format JSON avec cette structure exacte :
+        {{
+            "recommandation": "ACHAT" | "VENTE" | "ATTENTE",
+            "confiance": entier entre 0 et 100,
+            "analyse_technique": "Résumé factuel de la situation technique (1 phrase)",
+            "analyse_macro": "Résumé des actualités récentes et de leur impact (2 phrases)",
+            "justification": "Pourquoi cette recommandation précise maintenant"
+        }}
+        """
+        
+        response = client.models.generate_content(
+            model='gemini-3.5-flash-lite',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}], # Activation du Grounding Google Search
+                response_mime_type="application/json", # Force le modèle à renvoyer un JSON parsable
+                temperature=0.2 # Température basse pour limiter les hallucinations
+            )
+        )
+        
+        return json.loads(response.text)
+    except Exception as e:
+        return {"erreur": f"Échec de l'analyse IA : {str(e)}"}
 # ==========================================================
 # 👑 MOTEUR UNIVERSEL CRYPTO MASTER (15M)
 # ==========================================================
@@ -2636,7 +2693,7 @@ def bloc_live_auto_actualise():
         )
 
     with tab_ia:
-        ia_stats = charger_experience_ia_collective(bases_actives)
+          ia_stats = charger_experience_ia_collective(bases_actives)
         st.markdown(
             f"""
         <div class="xp-card">
@@ -2646,8 +2703,60 @@ def bloc_live_auto_actualise():
         """,
             unsafe_allow_html=True,
         )
-        for lecon in ia_stats["lecons_apprises"][:4]:
-            st.caption(f"• {lecon}")
+        
+        st.markdown("---")
+        st.markdown("### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
+        st.caption("L'Agent utilise Google Search en temps réel pour croiser l'actualité avec tes indicateurs techniques.")
+        
+        col_ia1, col_ia2 = st.columns([1, 2])
+        
+        with col_ia1:
+            crypto_cible = st.selectbox("Sélectionner la paire à analyser :", bases_actives, key="select_ia_agent")
+            paire_cible = f"{crypto_cible}/USDT"
+            
+            if st.button(f"🔍 Analyser {paire_cible}", type="primary", use_container_width=True):
+                with st.spinner(f"L'Agent Gemini analyse {paire_cible} et scrute le web..."):
+                    # Récupération des données techniques fraîches
+                    prix_live = prix_mexc_direct.get(paire_cible, "N/A")
+                    stats_mtf = obtenir_stats_mtf_radar(crypto_cible)
+                    
+                    # Appel à l'API Gemini
+                    resultat_ia = analyser_marche_avec_gemini(paire_cible, prix_live, stats_mtf)
+                    
+                    # Stockage temporaire dans la session pour affichage
+                    st.session_state.dernier_rapport_ia = resultat_ia
+                    st.session_state.derniere_paire_ia = paire_cible
+
+        with col_ia2:
+            rapport = st.session_state.get("dernier_rapport_ia")
+            paire_rapport = st.session_state.get("derniere_paire_ia")
+            
+            if rapport:
+                if "erreur" in rapport:
+                    st.error(rapport["erreur"])
+                else:
+                    reco = rapport.get("recommandation", "ATTENTE")
+                    couleur_reco = "#00E676" if reco == "ACHAT" else "#FF1744" if reco == "VENTE" else "#FFB300"
+                    
+                    st.markdown(
+                        f"""
+                        <div style="background-color:#0D1117; border: 1px solid {couleur_reco}; border-radius: 8px; padding: 15px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                                <h4 style="margin:0; color:{couleur_reco};">Signal : {reco}</h4>
+                                <span style="background-color:#161B22; padding:4px 8px; border-radius:4px; font-size:12px;">
+                                    Confiance : <b>{rapport.get('confiance', 0)}%</b>
+                                </span>
+                            </div>
+                            <p style="font-size:13px; margin-bottom:5px;"><b>📊 Analyse Technique :</b> {rapport.get('analyse_technique', '')}</p>
+                            <p style="font-size:13px; margin-bottom:5px;"><b>🌍 Analyse Macro (Web) :</b> {rapport.get('analyse_macro', '')}</p>
+                            <hr style="border-color:#30363D; margin:10px 0;">
+                            <p style="font-size:13px; margin:0;"><b>💡 Justification :</b> <i>{rapport.get('justification', '')}</i></p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.info("👈 Sélectionne une paire et lance l'analyse pour obtenir un rapport.")
 
     # ======================================================
     # 🏆 CLASSEMENT LIVE : ULTRA-RAPIDE (< 50 MS) & STATS EXACTES
