@@ -856,7 +856,6 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
     Interroge Gemini avec les données techniques du cockpit et la recherche Google en direct.
     Retourne un dictionnaire structuré.
     """
-    # Récupération de la clé API depuis les secrets Streamlit
     api_key = st.secrets.get("GEMINI_API_KEY", "VOTRE_CLE_API_ICI")
     if api_key == "VOTRE_CLE_API_ICI":
         return {"erreur": "Clé API Gemini manquante dans st.secrets."}
@@ -877,8 +876,8 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
         - Range 1j : {stats_mtf.get('range_1d', 'N/A')}
         
         INSTRUCTIONS STRICTES :
-        1. Utilise ton outil de recherche Google pour trouver les actualités des 24 dernières heures concernant le projet {nom_crypto} et la macro-économie globale (taux d'intérêt, régulation).
-        2. Croise le sentiment macro-économique avec les données techniques fournies (RSI, Range).
+        1. Utilise ton outil de recherche Google pour trouver les actualités des 24 dernières heures concernant le projet {nom_crypto} et la macro-économie globale.
+        2. Croise le sentiment macro-économique avec les données techniques fournies.
         3. Déduis-en une recommandation claire.
         
         Tu dois OBLIGATOIREMENT répondre au format JSON avec cette structure exacte :
@@ -892,16 +891,43 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
         """
         
         response = client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
-                tools=[{"google_search": {}}], # Activation du Grounding Google Search
-                response_mime_type="application/json", # Force le modèle à renvoyer un JSON parsable
-                temperature=0.2 # Température basse pour limiter les hallucinations
+                tools=[{"google_search": {}}],
+                response_mime_type="application/json",
+                temperature=0.2,
+                # Désactivation des filtres de sécurité pour éviter la censure financière
+                safety_settings=[
+                    types.SafetySetting(
+                        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                    types.SafetySetting(
+                        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                    types.SafetySetting(
+                        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                    types.SafetySetting(
+                        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    )
+                ]
             )
         )
         
+        # Sécurité architecturale : on vérifie que l'IA a bien répondu du texte
+        if not response.text:
+            raison = "Inconnue"
+            if response.candidates and len(response.candidates) > 0:
+                raison = str(response.candidates[0].finish_reason)
+            return {"erreur": f"L'IA a renvoyé une réponse vide. Raison du blocage API : {raison}"}
+        
         return json.loads(response.text)
+        
     except Exception as e:
         return {"erreur": f"Échec de l'analyse IA : {str(e)}"}
 # ==========================================================
