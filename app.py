@@ -2236,12 +2236,11 @@ def bloc_live_auto_actualise():
     mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
     # 5. ONGLETS DU COCKPIT BILINGUE
-    tab_auto, tab_radar, tab_master, tab_ia, tab_classement, tab_calc = st.tabs(
+   tab_auto, tab_radar, tab_master, tab_classement, tab_calc = st.tabs(
         [
             t("tab_auto", user=trader_courant),
             t("tab_radar", profile=profil_cle),
             t("tab_master"),
-            t("tab_ia"),
             t("tab_rank"),
             t("tab_calc"),
         ]
@@ -2718,68 +2717,6 @@ def bloc_live_auto_actualise():
             use_container_width=True,
         )
 
-    with tab_ia:
-        ia_stats = charger_experience_ia_collective(bases_actives)
-        st.markdown(
-            f"""
-            <div class="xp-card">
-                <b>{t('ia_level')} <span style="color:#00E676;">{ia_stats['niveau']}</span></b> (⭐ {ia_stats['xp_total']} XP)<br>
-                <small>{t('ia_sub')}</small>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        
-        st.markdown("---")
-        st.markdown("### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
-        st.caption("L'Agent utilise Google Search en temps réel pour croiser l'actualité avec tes indicateurs techniques.")
-        
-        col_ia1, col_ia2 = st.columns([1, 2])
-        
-        with col_ia1:
-            crypto_cible = st.selectbox("Sélectionner la paire à analyser :", bases_actives, key="select_ia_agent")
-            paire_cible = f"{crypto_cible}/USDT"
-            
-            if st.button(f"🔍 Analyser {paire_cible}", type="primary", use_container_width=True):
-                with st.spinner(f"L'Agent Gemini analyse {paire_cible} et scrute le web..."):
-                    prix_live = prix_mexc_direct.get(paire_cible, "N/A")
-                    stats_mtf = obtenir_stats_mtf_radar(crypto_cible)
-                    
-                    resultat_ia = analyser_marche_avec_gemini(paire_cible, prix_live, stats_mtf)
-                    
-                    st.session_state.dernier_rapport_ia = resultat_ia
-                    st.session_state.derniere_paire_ia = paire_cible
-
-        with col_ia2:
-            rapport = st.session_state.get("dernier_rapport_ia")
-            paire_rapport = st.session_state.get("derniere_paire_ia")
-            
-            if rapport:
-                if "erreur" in rapport:
-                    st.error(rapport["erreur"])
-                else:
-                    reco = rapport.get("recommandation", "ATTENTE")
-                    couleur_reco = "#00E676" if reco == "ACHAT" else "#FF1744" if reco == "VENTE" else "#FFB300"
-                    
-                    st.markdown(
-                        f"""
-                        <div style="background-color:#0D1117; border: 1px solid {couleur_reco}; border-radius: 8px; padding: 15px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
-                                <h4 style="margin:0; color:{couleur_reco};">Signal : {reco}</h4>
-                                <span style="background-color:#161B22; padding:4px 8px; border-radius:4px; font-size:12px;">
-                                    Confiance : <b>{rapport.get('confiance', 0)}%</b>
-                                </span>
-                            </div>
-                            <p style="font-size:13px; margin-bottom:5px;"><b>📊 Analyse Technique :</b> {rapport.get('analyse_technique', '')}</p>
-                            <p style="font-size:13px; margin-bottom:5px;"><b>🌍 Analyse Macro (Web) :</b> {rapport.get('analyse_macro', '')}</p>
-                            <hr style="border-color:#30363D; margin:10px 0;">
-                            <p style="font-size:13px; margin:0;"><b>💡 Justification :</b> <i>{rapport.get('justification', '')}</i></p>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-            else:
-                st.info("👈 Sélectionne une paire et lance l'analyse pour obtenir un rapport.")
 
     # ======================================================
     # 🏆 CLASSEMENT LIVE : ULTRA-RAPIDE (< 50 MS) & STATS EXACTES
@@ -2872,3 +2809,59 @@ def bloc_live_auto_actualise():
 
 # Lancement du fragment fluide
 bloc_live_auto_actualise()
+
+# ==========================================================
+# 🧠 TERMINAL AGENT IA (HORS BOUCLE DE RAFRAÎCHISSEMENT)
+# ==========================================================
+st.markdown("---")
+st.markdown("### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
+st.caption("L'Agent utilise Google Search en temps réel pour croiser l'actualité avec tes indicateurs techniques.")
+
+col_ia1, col_ia2 = st.columns([1, 2])
+
+with col_ia1:
+    crypto_cible = st.selectbox("Sélectionner la paire à analyser :", bases_actives, key="select_ia_agent_global")
+    paire_cible = f"{crypto_cible}/USDT"
+    
+    if st.button(f"🔍 Analyser {paire_cible}", type="primary", use_container_width=True):
+        with st.spinner(f"L'Agent Gemini analyse {paire_cible} et scrute le web (cela peut prendre 10 à 15 secondes)..."):
+            # Récupération du prix à l'instant T (hors boucle)
+            prix_live_dict = obtenir_prix_live_multi_sources([crypto_cible])
+            prix_live = prix_live_dict.get(paire_cible, "N/A")
+            stats_mtf = obtenir_stats_mtf_radar(crypto_cible)
+            
+            # Appel à l'API Gemini
+            resultat_ia = analyser_marche_avec_gemini(paire_cible, prix_live, stats_mtf)
+            
+            st.session_state.dernier_rapport_ia = resultat_ia
+            st.session_state.derniere_paire_ia = paire_cible
+
+with col_ia2:
+    rapport = st.session_state.get("dernier_rapport_ia")
+    
+    if rapport:
+        if "erreur" in rapport:
+            st.error(rapport["erreur"])
+        else:
+            reco = rapport.get("recommandation", "ATTENTE")
+            couleur_reco = "#00E676" if reco == "ACHAT" else "#FF1744" if reco == "VENTE" else "#FFB300"
+            
+            st.markdown(
+                f"""
+                <div style="background-color:#0D1117; border: 1px solid {couleur_reco}; border-radius: 8px; padding: 15px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                        <h4 style="margin:0; color:{couleur_reco};">Signal : {reco}</h4>
+                        <span style="background-color:#161B22; padding:4px 8px; border-radius:4px; font-size:12px;">
+                            Confiance : <b>{rapport.get('confiance', 0)}%</b>
+                        </span>
+                    </div>
+                    <p style="font-size:13px; margin-bottom:5px;"><b>📊 Analyse Technique :</b> {rapport.get('analyse_technique', '')}</p>
+                    <p style="font-size:13px; margin-bottom:5px;"><b>🌍 Analyse Macro (Web) :</b> {rapport.get('analyse_macro', '')}</p>
+                    <hr style="border-color:#30363D; margin:10px 0;">
+                    <p style="font-size:13px; margin:0;"><b>💡 Justification :</b> <i>{rapport.get('justification', '')}</i></p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+    else:
+        st.info("👈 Sélectionne une paire et lance l'analyse pour obtenir un rapport.")
