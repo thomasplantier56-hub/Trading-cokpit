@@ -891,7 +891,7 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
         """
         
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[{"google_search": {}}],
