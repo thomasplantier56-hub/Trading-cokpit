@@ -2233,7 +2233,7 @@ def bloc_live_auto_actualise():
                             "open_timestamp": ts_maintenant,
                         }
 
-mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
+    mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
     # 5. ONGLETS DU COCKPIT BILINGUE
     tab_auto, tab_radar, tab_master, tab_classement, tab_calc = st.tabs(
