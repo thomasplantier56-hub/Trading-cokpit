@@ -1,6 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor
-from google import genai
-from google.genai import types
 import csv
 import datetime
 import json
@@ -12,6 +10,10 @@ import pandas as pd
 import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+# Imports officiels SDK Google Gemini
+from google import genai
+from google.genai import types
 
 # Fuseau horaire Paris
 try:
@@ -130,7 +132,6 @@ def cloud_get(key):
 
 
 def cloud_mget(keys):
-    """Récupère une liste de clés en 1 seule requête HTTP ultra-rapide."""
     url, token = get_upstash_credentials()
     if not url or not token or not keys:
         return [None] * len(keys)
@@ -197,10 +198,7 @@ I18N = {
         "monitored_pairs": "Paires surveillées :",
         "active_profile": "Profil actif :",
         "setup_a_title": "SETUP A+ DU JOUR",
-        "setup_a_waiting": (
-            "👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. L'IA surveille le"
-            " prochain alignement 5 étoiles !"
-        ),
+        "setup_a_waiting": "👑 <b>SETUP A+ DU JOUR :</b> ⚪ En attente. L'IA surveille le prochain alignement 5 étoiles !",
         "target_gain": "Gain Visé :",
         "optimal_entry": "Entrée Optimale (Limit) :",
         "stop_loss": "Stop-Loss :",
@@ -214,7 +212,6 @@ I18N = {
         "tab_auto": "🤖 Auto ({user})",
         "tab_radar": "⚡ Radar ({profile})",
         "tab_master": "👑 Crypto Master (1M XP)",
-        "tab_ia": "🧠 Cerveau IA",
         "tab_rank": "🏆 Classement",
         "tab_calc": "🧮 Calculateur",
         "balance_realized": "Solde Réalisé :",
@@ -229,14 +226,8 @@ I18N = {
         "breakeven": "✅ Breakeven Verrouillé",
         "master_header": "👑 Crypto Master (Modèle 100 USDT)",
         "toggle_master_auto": "⚡ AUTOPILOTE MASTER",
-        "master_auto_on": (
-            "🟢 AUTOPILOTE ACTIF : L'IA prend automatiquement tous les"
-            " Breakouts 1M XP."
-        ),
-        "master_auto_off": (
-            "⚪ MODE MANUEL : Surveillez les alertes ci-dessous et cliquez pour"
-            " ouvrir un trade."
-        ),
+        "master_auto_on": "🟢 AUTOPILOTE ACTIF : L'IA prend automatiquement tous les Breakouts 1M XP.",
+        "master_auto_off": "⚪ MODE MANUEL : Surveillez les alertes ci-dessous et cliquez pour ouvrir un trade.",
         "regime_detected": "Régime Détecté (15m) :",
         "regime_comp": "🟢 COMPRESSION ACTIVE : MODE GRID MAKER (0% FEES)",
         "regime_exp": "🚀 EXPANSION : MODE SQUEEZE BREAKOUT",
@@ -244,9 +235,7 @@ I18N = {
         "grid_title": "Grille Maker 0.35% (Ordres Post-Only MEXC) :",
         "orders_buy": "🛒 Ordres Achat Limit :",
         "orders_sell": "💰 Ordres Vente Limit :",
-        "signal_breakout": (
-            "🚀 SIGNAL BREAKOUT 1M XP : {pair} {sens} (Levier x{lev})"
-        ),
+        "signal_breakout": "🚀 SIGNAL BREAKOUT 1M XP : {pair} {sens} (Levier x{lev})",
         "take_breakout_btn": "⚡ Prendre ce Breakout sur mon compte ({user})",
         "take_signal_btn": "⚡ Prendre {sens} sur {pair} ({user})",
         "status_valid": "🟢 ENTRÉE VALIDE",
@@ -255,9 +244,7 @@ I18N = {
         "price_col": "Prix Actuel",
         "status_col": "Statut",
         "ia_level": "🏆 Niveau :",
-        "ia_sub": (
-            "Chaque trade clôturé améliore les filtres de tout le groupe."
-        ),
+        "ia_sub": "Chaque trade clôturé améliore les filtres de tout le groupe.",
         "calc_entry": "Entrée ($)",
         "calc_sl": "SL ($)",
         "calc_margin": "Marge (USDT)",
@@ -278,10 +265,7 @@ I18N = {
         "monitored_pairs": "Monitored Pairs:",
         "active_profile": "Active Profile:",
         "setup_a_title": "DAILY A+ SETUP",
-        "setup_a_waiting": (
-            "👑 <b>DAILY A+ SETUP:</b> ⚪ Waiting. AI scanning for the next"
-            " 5-star alignment!"
-        ),
+        "setup_a_waiting": "👑 <b>DAILY A+ SETUP:</b> ⚪ Waiting. AI scanning for the next 5-star alignment!",
         "target_gain": "Target Gain:",
         "optimal_entry": "Optimal Entry (Limit):",
         "stop_loss": "Stop-Loss:",
@@ -295,7 +279,6 @@ I18N = {
         "tab_auto": "🤖 Auto ({user})",
         "tab_radar": "⚡ Radar ({profile})",
         "tab_master": "👑 Crypto Master (1M XP)",
-        "tab_ia": "🧠 AI Brain",
         "tab_rank": "🏆 Leaderboard",
         "tab_calc": "🧮 Calculator",
         "balance_realized": "Realized Balance:",
@@ -308,15 +291,10 @@ I18N = {
         "running_since": "Running for:",
         "waiting": "⏳ Pending",
         "breakeven": "✅ Locked Breakeven",
-        "sol_master_header": "👑 Crypto Master (100 USDT Model)",
+        "master_header": "👑 Crypto Master (100 USDT Model)",
         "toggle_master_auto": "⚡ MASTER AUTOPILOT",
-        "master_auto_on": (
-            "🟢 AUTOPILOT ACTIVE: AI executes all 1M XP Breakouts"
-            " automatically."
-        ),
-        "master_auto_off": (
-            "⚪ MANUAL MODE: Monitor alerts below and click to open a trade."
-        ),
+        "master_auto_on": "🟢 AUTOPILOT ACTIVE: AI executes all 1M XP Breakouts automatically.",
+        "master_auto_off": "⚪ MANUAL MODE: Monitor alerts below and click to open a trade.",
         "regime_detected": "Detected Regime (15m):",
         "regime_comp": "🟢 ACTIVE COMPRESSION: GRID MAKER MODE (0% FEES)",
         "regime_exp": "🚀 EXPANSION: SQUEEZE BREAKOUT MODE",
@@ -324,9 +302,7 @@ I18N = {
         "grid_title": "0.35% Maker Grid (MEXC Post-Only Orders):",
         "orders_buy": "🛒 Limit Buy Orders:",
         "orders_sell": "💰 Limit Sell Orders:",
-        "signal_breakout": (
-            "🚀 1M XP BREAKOUT SIGNAL: {pair} {sens} (x{lev} Leverage)"
-        ),
+        "signal_breakout": "🚀 1M XP BREAKOUT SIGNAL: {pair} {sens} (x{lev} Leverage)",
         "take_breakout_btn": "⚡ Take this Breakout on my account ({user})",
         "take_signal_btn": "⚡ Take {sens} on {pair} ({user})",
         "status_valid": "🟢 VALID ENTRY",
@@ -356,10 +332,6 @@ PARAMETRES_STRATS = {
     "Master": {"levier": 25, "marge": 100.0, "max_duree_sec": 5400},
 }
 
-# ==========================================================
-# 👥 GESTION DES COMPTES AVEC COMPTEURS DE TRADES PERMANENTS
-# ==========================================================
-# 🌟 Données permanentes garanties avec les 214 trades de Yeepse & PnL Thomas
 TRADERS_INITIAUX = {
     "Thomas": {
         "solde": 1167.37,
@@ -383,7 +355,6 @@ TRADERS_INITIAUX = {
 
 
 def charger_un_compte(nom_trader):
-    """Charge un compte de manière isolée avec préservation garantie des compteurs de trades."""
     init_vals = TRADERS_INITIAUX.get(
         nom_trader,
         {
@@ -394,10 +365,8 @@ def charger_un_compte(nom_trader):
         },
     )
 
-    # 1. Tentative Cloud isolée
     c_cloud = cloud_get(f"compte_trader_{nom_trader}")
     if c_cloud and isinstance(c_cloud, dict) and "solde" in c_cloud:
-        # Assurer la présence des compteurs
         if "total_trades" not in c_cloud or c_cloud["total_trades"] == 0:
             c_cloud["total_trades"] = max(
                 c_cloud.get("total_trades", 0), init_vals["total_trades"]
@@ -407,7 +376,6 @@ def charger_un_compte(nom_trader):
             )
         return c_cloud
 
-    # 2. Tentative Fichier Local
     f_local = f"compte_{nom_trader}.json"
     if os.path.exists(f_local):
         try:
@@ -425,7 +393,6 @@ def charger_un_compte(nom_trader):
         except Exception:
             pass
 
-    # 3. Création par défaut avec les statistiques historiques réelles
     c_new = {
         "solde": init_vals["solde"],
         "capital_initial": init_vals["capital_initial"],
@@ -453,7 +420,6 @@ def sauvegarder_un_compte(nom_trader, data):
 
 @st.cache_data(ttl=4)
 def charger_tous_les_comptes_rapide():
-    """Charge TOUS les comptes en UNE SEULE requête groupée ultra-rapide (< 50 ms)."""
     traders_connus = list(TRADERS_INITIAUX.keys())
     custom_traders = cloud_get("liste_noms_traders") or []
     all_traders = list(dict.fromkeys(traders_connus + custom_traders))
@@ -493,9 +459,6 @@ def mettre_a_jour_un_compte(nom_trader, modificateur_fn):
     sauvegarder_un_compte(nom_trader, compte)
 
 
-# ==========================================================
-# 🪙 GESTION HYBRIDE DES PAIRES
-# ==========================================================
 def charger_paires_radar():
     p_cloud = cloud_get("paires_radar")
     if p_cloud and isinstance(p_cloud, list) and len(p_cloud) > 0:
@@ -544,9 +507,6 @@ def get_mexc_futures_url(paire_str):
     return f"https://futures.mexc.com/exchange/{base}_USDT"
 
 
-# ==========================================================
-# ⚡ FLUX BOUGIES ET PRIX 100% MEXC NATIVE
-# ==========================================================
 def obtenir_prix_live_multi_sources(bases_actives):
     prix_dict = {}
     try:
@@ -616,9 +576,6 @@ def charger_donnees_marche_globales(bases_actives):
     return donnees
 
 
-# ==========================================================
-# 📊 CALCULATEUR MULTI-TIMEFRAME
-# ==========================================================
 def calculer_rsi_series(series, period=14):
     d = series.diff()
     g = d.where(d > 0, 0).rolling(period).mean()
@@ -661,9 +618,7 @@ def obtenir_stats_mtf_radar(nom_court):
                 rsi_30 = float(calculer_rsi_series(df_30["Close"], 14).iloc[-1])
                 high_30 = float(df_30["High"].iloc[-16:].max())
                 low_30 = float(df_30["Low"].iloc[-16:].min())
-                stats["range_30m"] = (
-                    f"[{formater_prix(low_30)} - {formater_prix(high_30)}]"
-                )
+                stats["range_30m"] = f"[{formater_prix(low_30)} - {formater_prix(high_30)}]"
                 stats["rsi_30m"] = f"{rsi_30:.1f}"
 
             df_1h = (
@@ -675,9 +630,7 @@ def obtenir_stats_mtf_radar(nom_court):
                 rsi_1h = float(calculer_rsi_series(df_1h["Close"], 14).iloc[-1])
                 high_1h = float(df_1h["High"].iloc[-24:].max())
                 low_1h = float(df_1h["Low"].iloc[-24:].min())
-                stats["range_1h"] = (
-                    f"[{formater_prix(low_1h)} - {formater_prix(high_1h)}]"
-                )
+                stats["range_1h"] = f"[{formater_prix(low_1h)} - {formater_prix(high_1h)}]"
                 stats["rsi_1h"] = f"{rsi_1h:.1f}"
 
             df_4h = (
@@ -691,27 +644,20 @@ def obtenir_stats_mtf_radar(nom_court):
                 )
                 high_4h = float(df_4h["High"].iloc[-12:].max())
                 low_4h = float(df_4h["Low"].iloc[-12:].min())
-                stats["range_4h"] = (
-                    f"[{formater_prix(low_4h)} - {formater_prix(high_4h)}]"
-                )
+                stats["range_4h"] = f"[{formater_prix(low_4h)} - {formater_prix(high_4h)}]"
                 stats["rsi_4h"] = f"{rsi_4h:.1f}"
 
         if df_1d is not None and len(df_1d) >= 14:
             rsi_1d = float(calculer_rsi_series(df_1d["Close"], 14).iloc[-1])
             high_1d = float(df_1d["High"].iloc[-14:].max())
             low_1d = float(df_1d["Low"].iloc[-14:].min())
-            stats["range_1d"] = (
-                f"[{formater_prix(low_1d)} - {formater_prix(high_1d)}]"
-            )
+            stats["range_1d"] = f"[{formater_prix(low_1d)} - {formater_prix(high_1d)}]"
             stats["rsi_1d"] = f"{rsi_1d:.1f}"
     except Exception:
         pass
     return stats
 
 
-# ==========================================================
-# 🧠 CERVEAU IA COLLECTIF
-# ==========================================================
 def charger_experience_ia_collective(bases_actives):
     ia_cloud = cloud_get("experience_ia")
     if ia_cloud and isinstance(ia_cloud, dict):
@@ -848,14 +794,11 @@ def charger_fear_and_greed():
     except Exception:
         return 50, "Neutre"
 
+
 # ==========================================================
 # 🤖 AGENT DE TRADING GEMINI (ANALYSE MACRO + TECHNIQUE)
 # ==========================================================
 def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
-    """
-    Interroge Gemini avec les données techniques du cockpit et la recherche Google en direct.
-    Retourne un dictionnaire structuré.
-    """
     api_key = st.secrets.get("GEMINI_API_KEY", "VOTRE_CLE_API_ICI")
     if api_key == "VOTRE_CLE_API_ICI":
         return {"erreur": "Clé API Gemini manquante dans st.secrets."}
@@ -891,13 +834,12 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
         """
         
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[{"google_search": {}}],
                 response_mime_type="application/json",
                 temperature=0.2,
-                # Désactivation des filtres de sécurité pour éviter la censure financière
                 safety_settings=[
                     types.SafetySetting(
                         category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
@@ -919,7 +861,6 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
             )
         )
         
-        # Sécurité architecturale : on vérifie que l'IA a bien répondu du texte
         if not response.text:
             raison = "Inconnue"
             if response.candidates and len(response.candidates) > 0:
@@ -930,6 +871,8 @@ def analyser_marche_avec_gemini(paire, prix_actuel, stats_mtf):
         
     except Exception as e:
         return {"erreur": f"Échec de l'analyse IA : {str(e)}"}
+
+
 # ==========================================================
 # 👑 MOTEUR UNIVERSEL CRYPTO MASTER (15M)
 # ==========================================================
@@ -1136,6 +1079,65 @@ def detecter_setup_a_plus_du_jour(donnees_globales, bases_actives):
         except Exception:
             continue
     return setups_valides[0] if setups_valides else None
+
+
+# ==========================================================
+# 🎯 MOTEUR DE DÉTECTION ICT (SWEEP -> MSS -> FVG)
+# ==========================================================
+def scanner_marche_ict(donnees_globales, bases_actives):
+    data_15m = donnees_globales.get("15m", {})
+    signaux_ict = []
+
+    for nom_court in bases_actives:
+        try:
+            df = data_15m.get(nom_court)
+            if df is None or len(df) < 20:
+                continue
+
+            c1_high, c1_low = float(df["High"].iloc[-3]), float(df["Low"].iloc[-3])
+            c2_high, c2_low = float(df["High"].iloc[-2]), float(df["Low"].iloc[-2])
+            c3_high, c3_low = float(df["High"].iloc[-1]), float(df["Low"].iloc[-1])
+            c3_close = float(df["Close"].iloc[-1])
+
+            high_recent = float(df["High"].iloc[-15:-3].max())
+            low_recent = float(df["Low"].iloc[-15:-3].min())
+
+            # 1. SETUP BULLISH (Achat)
+            sweep_bullish = (c1_low < low_recent) or (c2_low < low_recent)
+            mss_bullish = c3_close > df["High"].iloc[-5:-2].max()
+            fvg_bullish = c3_low > c1_high
+            taille_fvg_bull = c3_low - c1_high
+
+            if sweep_bullish and mss_bullish and fvg_bullish and taille_fvg_bull > 0:
+                signaux_ict.append({
+                    "paire": f"{nom_court}/USDT",
+                    "sens": "LONG 🟢",
+                    "entree_fvg": c1_high,
+                    "sl": c1_low,
+                    "tp": c3_close + (c3_close - c1_low) * 2,
+                    "motif": "ICT Bullish : Sweep Bas + MSS + FVG"
+                })
+
+            # 2. SETUP BEARISH (Vente)
+            sweep_bearish = (c1_high > high_recent) or (c2_high > high_recent)
+            mss_bearish = c3_close < df["Low"].iloc[-5:-2].min()
+            fvg_bearish = c3_high < c1_low
+            taille_fvg_bear = c1_low - c3_high
+
+            if sweep_bearish and mss_bearish and fvg_bearish and taille_fvg_bear > 0:
+                signaux_ict.append({
+                    "paire": f"{nom_court}/USDT",
+                    "sens": "SHORT 🔴",
+                    "entree_fvg": c1_low,
+                    "sl": c1_high,
+                    "tp": c3_close - (c1_high - c3_close) * 2,
+                    "motif": "ICT Bearish : Sweep Haut + MSS + FVG"
+                })
+
+        except Exception:
+            continue
+            
+    return signaux_ict
 
 
 # ==========================================================
@@ -1447,22 +1449,18 @@ with st.sidebar.expander(f"➕ {t('create_profile')}"):
             st.session_state.trader_session = nouveau_nom
             st.rerun()
 
-# VOYANT STATUS CLOUD
 up_url, _ = get_upstash_credentials()
 if up_url:
     st.sidebar.markdown(
-        "<span style='color:#14F195; font-size:12px; font-weight:bold;'>☁️"
-        " Mémoire Cloud Active (Upstash)</span>",
+        "<span style='color:#14F195; font-size:12px; font-weight:bold;'>☁️ Mémoire Cloud Active (Upstash)</span>",
         unsafe_allow_html=True,
     )
 else:
     st.sidebar.markdown(
-        "<span style='color:#FFB300; font-size:11px;'>⚠️ Stockage Local"
-        " (Configure les Secrets Upstash)</span>",
+        "<span style='color:#FFB300; font-size:11px;'>⚠️ Stockage Local (Configure les Secrets Upstash)</span>",
         unsafe_allow_html=True,
     )
 
-# GESTIONNAIRE DYNAMIQUE DE PAIRES
 with st.sidebar.expander(f"🪙 {t('manage_pairs')}", expanded=False):
     st.caption(t("manage_pairs_sub"))
     nouvelle_paire_in = (
@@ -1505,8 +1503,7 @@ compte_actif = charger_un_compte(trader_courant)
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.markdown(
-        f"### ⚡ {t('cockpit_title')} <span class='user-badge'>👤"
-        f" {trader_courant}</span>",
+        f"### ⚡ {t('cockpit_title')} <span class='user-badge'>👤 {trader_courant}</span>",
         unsafe_allow_html=True,
     )
 with col_h2:
@@ -1575,7 +1572,7 @@ if "memoire_par_profil" not in st.session_state:
 
 
 # ==========================================================
-# 🌟 FRAGMENT AUTO-ACTUALISÉ
+# 🌟 FRAGMENT AUTO-ACTUALISÉ (8 SECONDES)
 # ==========================================================
 @st.fragment(run_every="8s")
 def bloc_live_auto_actualise():
@@ -1664,8 +1661,7 @@ def bloc_live_auto_actualise():
         if sigs_c:
             for p, info in sigs_c.items():
                 st.markdown(
-                    f"**{info['signal']}** `{p}` 🎯"
-                    f" {formater_prix(info['prix_entree'])}",
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                     unsafe_allow_html=True,
                 )
         else:
@@ -1684,8 +1680,7 @@ def bloc_live_auto_actualise():
         if sigs_i:
             for p, info in sigs_i.items():
                 st.markdown(
-                    f"**{info['signal']}** `{p}` 🎯"
-                    f" {formater_prix(info['prix_entree'])}",
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                     unsafe_allow_html=True,
                 )
         else:
@@ -1704,8 +1699,7 @@ def bloc_live_auto_actualise():
         if sigs_s:
             for p, info in sigs_s.items():
                 st.markdown(
-                    f"**{info['signal']}** `{p}` 🎯"
-                    f" {formater_prix(info['prix_entree'])}",
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                     unsafe_allow_html=True,
                 )
         else:
@@ -1724,8 +1718,7 @@ def bloc_live_auto_actualise():
         if sigs_u:
             for p, info in sigs_u.items():
                 st.markdown(
-                    f"**{info['signal']}** `{p}` 🎯"
-                    f" {formater_prix(info['prix_entree'])}",
+                    f"**{info['signal']}** `{p}` 🎯 {formater_prix(info['prix_entree'])}",
                     unsafe_allow_html=True,
                 )
         else:
@@ -1735,12 +1728,11 @@ def bloc_live_auto_actualise():
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. MOTEUR AUTO-TRADER AVEC COMPTEURS DE TRADES CUMULATIFS
+    # 4. MOTEUR AUTO-TRADER
     def executer_moteur_complet(compte):
         heure_fr_trade = obtenir_date_heure_paris("%H:%M:%S")
         ts_maintenant = time.time()
 
-        # A. Positions Master
         for pos_k in list(compte.get("positions", {}).keys()):
             if "Master_" in pos_k:
                 pos_m = compte["positions"][pos_k]
@@ -1824,9 +1816,7 @@ def bloc_live_auto_actualise():
                             + pnl_40
                         )
                         compte["solde"] += pnl_40
-                        compte["total_trades"] = (
-                            compte.get("total_trades", 0) + 1
-                        )
+                        compte["total_trades"] = compte.get("total_trades", 0) + 1
                         compte["total_wins"] = compte.get("total_wins", 0) + 1
                         mettre_a_jour_ia_collective(
                             trader_courant,
@@ -1858,13 +1848,9 @@ def bloc_live_auto_actualise():
                             if tp1_hit_m
                             else pnl_tot
                         )
-                        compte["total_trades"] = (
-                            compte.get("total_trades", 0) + 1
-                        )
+                        compte["total_trades"] = compte.get("total_trades", 0) + 1
                         if tp1_hit_m:
-                            compte["total_wins"] = (
-                                compte.get("total_wins", 0) + 1
-                            )
+                            compte["total_wins"] = compte.get("total_wins", 0) + 1
                         mettre_a_jour_ia_collective(
                             trader_courant,
                             paire_m,
@@ -1901,9 +1887,7 @@ def bloc_live_auto_actualise():
                             + pnl_40
                         )
                         compte["solde"] += pnl_40
-                        compte["total_trades"] = (
-                            compte.get("total_trades", 0) + 1
-                        )
+                        compte["total_trades"] = compte.get("total_trades", 0) + 1
                         compte["total_wins"] = compte.get("total_wins", 0) + 1
                         mettre_a_jour_ia_collective(
                             trader_courant,
@@ -1935,13 +1919,9 @@ def bloc_live_auto_actualise():
                             if tp1_hit_m
                             else pnl_tot
                         )
-                        compte["total_trades"] = (
-                            compte.get("total_trades", 0) + 1
-                        )
+                        compte["total_trades"] = compte.get("total_trades", 0) + 1
                         if tp1_hit_m:
-                            compte["total_wins"] = (
-                                compte.get("total_wins", 0) + 1
-                            )
+                            compte["total_wins"] = compte.get("total_wins", 0) + 1
                         mettre_a_jour_ia_collective(
                             trader_courant,
                             paire_m,
@@ -1962,7 +1942,6 @@ def bloc_live_auto_actualise():
                         )
                         del compte["positions"][pos_k]
 
-        # B. Prise auto Master
         if compte.get("master_auto", False) and master_data:
             bo = master_data.get("breakout_signal")
             paire_m_cle = f"Master_{master_data['sym']}/USDT"
@@ -1984,7 +1963,6 @@ def bloc_live_auto_actualise():
                     "dist": bo.get("dist", 1.0),
                 }
 
-        # C. Exécution classique du radar multi-profils
         if compte.get("auto_actif", False):
             for p_nom in LISTE_PROFILS:
                 param_strat = PARAMETRES_STRATS.get(
@@ -2236,11 +2214,12 @@ def bloc_live_auto_actualise():
     mettre_a_jour_un_compte(trader_courant, executer_moteur_complet)
 
     # 5. ONGLETS DU COCKPIT BILINGUE
-    tab_auto, tab_radar, tab_master, tab_classement, tab_calc = st.tabs(
+    tab_auto, tab_radar, tab_master, tab_ict, tab_classement, tab_calc = st.tabs(
         [
             t("tab_auto", user=trader_courant),
             t("tab_radar", profile=profil_cle),
             t("tab_master"),
+            "💧 ICT (Smart Money)",
             t("tab_rank"),
             t("tab_calc"),
         ]
@@ -2254,8 +2233,7 @@ def bloc_live_auto_actualise():
         col_sm1, col_sm2 = st.columns([3, 2])
         with col_sm1:
             st.markdown(
-                f"#### {t('master_header')} <span class='user-badge'>👤"
-                f" {trader_courant}</span>",
+                f"#### {t('master_header')} <span class='user-badge'>👤 {trader_courant}</span>",
                 unsafe_allow_html=True,
             )
         with col_sm2:
@@ -2342,9 +2320,7 @@ def bloc_live_auto_actualise():
                     )
                     for lvl in master_data_live["grid_levels"]:
                         st.markdown(
-                            f"<span class='grid-badge-buy'>Achat L{lvl['lvl']}"
-                            f" : {lvl['buy']} $</span>"
-                            f" (-{lvl['lvl']*0.35:.2f}%)",
+                            f"<span class='grid-badge-buy'>Achat L{lvl['lvl']} : {lvl['buy']} $</span> (-{lvl['lvl']*0.35:.2f}%)",
                             unsafe_allow_html=True,
                         )
                 with col_g2:
@@ -2353,9 +2329,7 @@ def bloc_live_auto_actualise():
                     )
                     for lvl in master_data_live["grid_levels"]:
                         st.markdown(
-                            f"<span class='grid-badge-sell'>Vente L{lvl['lvl']}"
-                            f" : {lvl['sell']} $</span>"
-                            f" (+{lvl['lvl']*0.35:.2f}%)",
+                            f"<span class='grid-badge-sell'>Vente L{lvl['lvl']} : {lvl['sell']} $</span> (+{lvl['lvl']*0.35:.2f}%)",
                             unsafe_allow_html=True,
                         )
 
@@ -2381,9 +2355,7 @@ def bloc_live_auto_actualise():
                         def ajouter_pos_manuel(c):
                             cle_pos_m = f"Master_{choix_crypto_master}/USDT"
                             c["positions"][cle_pos_m] = {
-                                "strategie": (
-                                    f"👑 {choix_crypto_master} Master 1M XP"
-                                ),
+                                "strategie": f"👑 {choix_crypto_master} Master 1M XP",
                                 "paire": f"{choix_crypto_master}/USDT",
                                 "sens": bo["sens"],
                                 "motif": "Squeeze Breakout (Manuel 100$)",
@@ -2394,9 +2366,7 @@ def bloc_live_auto_actualise():
                                 "marge": 100.0,
                                 "levier": bo["levier"],
                                 "tp1_hit": False,
-                                "date_open": obtenir_date_heure_paris(
-                                    "%H:%M:%S"
-                                ),
+                                "date_open": obtenir_date_heure_paris("%H:%M:%S"),
                                 "open_timestamp": time.time(),
                                 "dist": bo.get("dist", 1.0),
                             }
@@ -2405,14 +2375,61 @@ def bloc_live_auto_actualise():
                             trader_courant, ajouter_pos_manuel
                         )
                         st.success(
-                            f"✅ Position {choix_crypto_master} Master"
-                            f" ({trader_courant}) OK !"
+                            f"✅ Position {choix_crypto_master} Master ({trader_courant}) OK !"
                         )
                         st.rerun()
             elif not sq_on and not bo:
                 st.info(t("regime_trans"))
         else:
             st.warning(f"⏳ Live MEXC {choix_crypto_master} Feed...")
+
+    # ======================================================
+    # 💧 ONGLET ICT (INNER CIRCLE TRADER)
+    # ======================================================
+    with tab_ict:
+        st.markdown("#### 💧 Scanner ICT (15m) : Sweep ➔ MSS ➔ FVG")
+        st.caption("Détection en temps réel de la séquence institutionnelle : Prise de liquidité, Cassure de structure et Fair Value Gap.")
+        
+        signaux_ict_live = scanner_marche_ict(donnees_globales, bases_actives)
+        
+        if not signaux_ict_live:
+            st.markdown(
+                """
+                <div style="background-color:#0D1117; border-radius:8px; padding:20px; text-align:center; border:1px dashed #30363D;">
+                    <h5 style="color:#8B949E; margin:0;">⚪ Aucun setup ICT parfait détecté actuellement.</h5>
+                    <p style="color:#8B949E; font-size:13px; margin-top:6px;">L'algorithme attend l'alignement strict des 3 étapes (Sweep, MSS, FVG).</p>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+        else:
+            for sig in signaux_ict_live:
+                couleur_ict = "#00E676" if "LONG" in sig["sens"] else "#FF1744"
+                bg_ict = "rgba(0, 230, 118, 0.1)" if "LONG" in sig["sens"] else "rgba(255, 23, 68, 0.1)"
+                url_mexc_ict = get_mexc_futures_url(sig["paire"])
+                
+                st.markdown(
+                    f"""
+                    <div style="background-color:{bg_ict}; border: 1px solid {couleur_ict}; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h4 style="margin:0; color:{couleur_ict};">⚡ {sig['paire']} : {sig['sens']}</h4>
+                            <span style="background-color:#161B22; padding:4px 8px; border-radius:4px; font-size:12px; border: 1px solid {couleur_ict};">
+                                {sig['motif']}
+                            </span>
+                        </div>
+                        <hr style="border-color:{couleur_ict}; opacity: 0.3; margin:10px 0;">
+                        <p style="margin:0; font-size:14px;">
+                            🎯 <b>Entrée Limit (Sur le FVG) :</b> <span style="color:#FFD700; font-weight:bold;">{formater_prix(sig['entree_fvg'])}</span><br>
+                            🛑 <b>Stop-Loss (Sous la liquidité) :</b> {formater_prix(sig['sl'])}<br>
+                            💰 <b>Take-Profit (Ratio 1:2) :</b> {formater_prix(sig['tp'])}
+                        </p>
+                        <div style="margin-top:10px;">
+                            <a href="{url_mexc_ict}" target="_blank" class="mexc-btn">🚀 Placer l'ordre Limit sur MEXC</a>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     # ======================================================
     # 🤖 ONGLET AUTO : POSITIONS OUVERTES & LIENS DIRECTS
@@ -2424,10 +2441,7 @@ def bloc_live_auto_actualise():
 
         with col_t1:
             st.markdown(
-                f"💰 <b>{t('balance_realized')}</b> `{c_fresh['solde']:.2f}"
-                " USDT` | **PnL :** <span"
-                f" style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'};"
-                f" font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
+                f"💰 <b>{t('balance_realized')}</b> `{c_fresh['solde']:.2f} USDT` | **PnL :** <span style='color:{'#00E676' if pnl_auto >= 0 else '#FF5252'}; font-weight:bold;'>{pnl_auto:+.2f} USDT</span>",
                 unsafe_allow_html=True,
             )
         with col_t2:
@@ -2717,19 +2731,16 @@ def bloc_live_auto_actualise():
             use_container_width=True,
         )
 
-
     # ======================================================
-    # 🏆 CLASSEMENT LIVE : ULTRA-RAPIDE (< 50 MS) & STATS EXACTES
+    # 🏆 CLASSEMENT LIVE
     # ======================================================
     with tab_classement:
         liste_classement = []
-        # Chargement instantané en MGET batch
         comptes_live = charger_tous_les_comptes_rapide()
         for nom, c in comptes_live.items():
             if not isinstance(c, dict):
                 continue
             pnl = c.get("solde", 1000.0) - c.get("capital_initial", 1000.0)
-            # Utilisation des compteurs permanents cumulatifs
             total_tr = c.get("total_trades", len(c.get("historique", [])))
             total_w = c.get(
                 "total_wins",
@@ -2753,6 +2764,9 @@ def bloc_live_auto_actualise():
             use_container_width=True,
         )
 
+    # ======================================================
+    # 🧮 CALCULATEUR DE POSITION
+    # ======================================================
     with tab_calc:
         c1, c2 = st.columns(2)
         paire_sel = c1.selectbox(
@@ -2810,6 +2824,7 @@ def bloc_live_auto_actualise():
 # Lancement du fragment fluide
 bloc_live_auto_actualise()
 
+
 # ==========================================================
 # 🧠 TERMINAL AGENT IA (HORS BOUCLE DE RAFRAÎCHISSEMENT)
 # ==========================================================
@@ -2817,20 +2832,20 @@ st.markdown("---")
 st.markdown("### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
 st.caption("L'Agent utilise Google Search en temps réel pour croiser l'actualité avec tes indicateurs techniques.")
 
+bases_actives_ia = charger_paires_radar()
+
 col_ia1, col_ia2 = st.columns([1, 2])
 
 with col_ia1:
-    crypto_cible = st.selectbox("Sélectionner la paire à analyser :", bases_actives, key="select_ia_agent_global")
+    crypto_cible = st.selectbox("Sélectionner la paire à analyser :", bases_actives_ia, key="select_ia_agent_global")
     paire_cible = f"{crypto_cible}/USDT"
     
     if st.button(f"🔍 Analyser {paire_cible}", type="primary", use_container_width=True):
-        with st.spinner(f"L'Agent Gemini analyse {paire_cible} et scrute le web (cela peut prendre 10 à 15 secondes)..."):
-            # Récupération du prix à l'instant T (hors boucle)
+        with st.spinner(f"L'Agent Gemini analyse {paire_cible} et scrute le web (cela prend 5 à 12 secondes)..."):
             prix_live_dict = obtenir_prix_live_multi_sources([crypto_cible])
             prix_live = prix_live_dict.get(paire_cible, "N/A")
             stats_mtf = obtenir_stats_mtf_radar(crypto_cible)
             
-            # Appel à l'API Gemini
             resultat_ia = analyser_marche_avec_gemini(paire_cible, prix_live, stats_mtf)
             
             st.session_state.dernier_rapport_ia = resultat_ia
