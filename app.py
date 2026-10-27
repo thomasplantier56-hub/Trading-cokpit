@@ -46,7 +46,6 @@ st.markdown(
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #161B22; color: #00E676; padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: bold; border: 1px solid #30363D; }
     
-    /* Style Barre d'onglets Pro sans bug d'empilement */
     div[role="radiogroup"] {
         background-color: #0D1117;
         padding: 8px 12px;
@@ -79,6 +78,123 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+# ==========================================================
+# 🌐 SYSTÈME BILINGUE (FR / EN)
+# ==========================================================
+I18N = {
+    "FR": {
+        "cockpit_title": "Cockpit Pro",
+        "paris_time": "Heure de Paris :",
+        "user_space": "Espace Trader",
+        "connected_as": "Connecté en tant que :",
+        "create_profile": "Créer un nouveau profil",
+        "input_name": "Prénom / Pseudo :",
+        "validate": "Valider la création",
+        "manage_pairs": "Gestion des Paires Crypto",
+        "add_crypto_ph": "Ajouter (ex: DOGE, SUI, NEAR) :",
+        "add_crypto_btn": "➕ Ajouter au Radar",
+        "gemini_title": "🧠 Agent d'Analyse Gemini (Macro + Technique)",
+        "gemini_caption": "Analyse à la demande : Indicateurs techniques + Contexte Macro en direct.",
+        "analyze_btn": "🔍 Analyser {pair} en direct",
+        "tab_ict": "💧 ICT (Smart Money 15m)",
+        "tab_scalp": "⚡ Scanner Scalping (1m)",
+        "tab_macro": "🌍 Macro Globale (Courbes Live)",
+        "tab_trades": "📜 Trades & Portefeuille ({user})",
+        "ict_header": "#### 💧 Scanner ICT (15m) : 1. Sweep Liquidité ➔ 2. MSS ➔ 3. FVG",
+        "scalp_header": "#### ⚡ Radar Scalping (1m) : Cassure de structure + Pic de Volume / FVG",
+        "macro_header": "#### 🌍 Courbes Macro-Économiques en Temps Réel (Flux WebSocket Direct)",
+        "macro_caption": "Visualise en un coup d'œil la tendance du Pétrole, du S&P 500, du Nasdaq, du CAC 40, de l'Or, de l'Euro et du VIX sans aucun rechargement.",
+        "mode_display": "Mode d'affichage :",
+        "grid_view": "📊 Grille Panoramique (Les 9 Courbes simultanées)",
+        "pro_view": "🔍 Graphique Pro Interactif (Bougies & Indicateurs)",
+        "inspect_profile": "👤 Voir le portefeuille et tous les trades du profil :",
+        "autopilot": "⚡ Autopilote ICT & Scalping ({user})",
+        "reset_btn": "🔄 Reset solde à 1000 USDT",
+        "realized_balance": "💰 Solde Réalisé",
+        "net_pnl": "📈 PnL Net",
+        "winrate": "🎯 Winrate",
+        "total_trades": "📊 Total Trades Exécutés",
+        "active_pos": "🚀 Positions Actives en Direct ({user}) :",
+        "no_pos": "👀 Aucune position ouverte en ce moment pour {user}.",
+        "close_btn": "🛑 Clôturer",
+        "history_title": "📜 Historique Intégral des Trades de {user} ({count} trades enregistrés)",
+        "filt_strat": "Filtrer par Stratégie :",
+        "filt_all_strat": "Toutes les stratégies",
+        "filt_res": "Filtrer par Résultat :",
+        "filt_all_res": "Tous les trades",
+        "filt_win": "Gagnants uniquement ✅",
+        "filt_loss": "Perdants uniquement ❌",
+        "download_csv": "📥 Télécharger tous les trades de {user} (.CSV)",
+        "no_trades": "Aucun trade dans le journal pour le moment.",
+        "multi_comp": "🏆 Comparatif Multi-Profils",
+    },
+    "EN": {
+        "cockpit_title": "Cockpit Pro",
+        "paris_time": "Paris Time:",
+        "user_space": "Trader Profile",
+        "connected_as": "Connected as:",
+        "create_profile": "Create new profile",
+        "input_name": "First name / Handle:",
+        "validate": "Submit",
+        "manage_pairs": "Crypto Pair Manager",
+        "add_crypto_ph": "Add (e.g. DOGE, SUI, NEAR):",
+        "add_crypto_btn": "➕ Add to Radar",
+        "gemini_title": "🧠 Gemini AI Agent (Macro + Technical)",
+        "gemini_caption": "On-demand analysis: Live indicators + Macro web search.",
+        "analyze_btn": "🔍 Analyze {pair} Live",
+        "tab_ict": "💧 ICT (Smart Money 15m)",
+        "tab_scalp": "⚡ Scalping Scanner (1m)",
+        "tab_macro": "🌍 Global Macro (Live Curves)",
+        "tab_trades": "📜 Trades & Portfolio ({user})",
+        "ict_header": "#### 💧 ICT Scanner (15m): 1. Liquidity Sweep ➔ 2. MSS ➔ 3. FVG",
+        "scalp_header": "#### ⚡ Scalping Radar (1m): Structure Breakout + Volume Spike / FVG",
+        "macro_header": "#### 🌍 Real-Time Global Macro Curves (Direct WebSocket Feed)",
+        "macro_caption": "Monitor Oil, S&P 500, Nasdaq, CAC 40, Gold, EUR/USD, and VIX in real time with zero reloading.",
+        "mode_display": "Display mode:",
+        "grid_view": "📊 Panoramic Grid (9 Simultaneous Curves)",
+        "pro_view": "🔍 Interactive Pro Chart (Candles & Indicators)",
+        "inspect_profile": "👤 View portfolio and all trades for profile:",
+        "autopilot": "⚡ ICT & Scalping Autopilot ({user})",
+        "reset_btn": "🔄 Reset balance to 1000 USDT",
+        "realized_balance": "💰 Realized Balance",
+        "net_pnl": "📈 Net PnL",
+        "winrate": "🎯 Winrate",
+        "total_trades": "📊 Total Trades Executed",
+        "active_pos": "🚀 Live Active Positions ({user}):",
+        "no_pos": "👀 No active positions right now for {user}.",
+        "close_btn": "🛑 Close",
+        "history_title": "📜 Complete Trade History of {user} ({count} recorded trades)",
+        "filt_strat": "Filter by Strategy:",
+        "filt_all_strat": "All strategies",
+        "filt_res": "Filter by Result:",
+        "filt_all_res": "All trades",
+        "filt_win": "Winners only ✅",
+        "filt_loss": "Losers only ❌",
+        "download_csv": "📥 Download all trades of {user} (.CSV)",
+        "no_trades": "No trades in journal yet.",
+        "multi_comp": "🏆 Multi-Profile Leaderboard",
+    },
+}
+
+if "langue" not in st.session_state:
+    st.session_state.langue = "FR"
+
+st.sidebar.markdown("### 🌐 Langue / Language")
+choix_langue = st.sidebar.selectbox(
+    "Language",
+    ["🇫🇷 Français", "🇬🇧 English"],
+    index=0 if st.session_state.langue == "FR" else 1,
+    label_visibility="collapsed",
+)
+st.session_state.langue = "FR" if "Français" in choix_langue else "EN"
+LANG = st.session_state.langue
+
+
+def t(key, **kwargs):
+    text = I18N[LANG].get(key, I18N["FR"].get(key, key))
+    return text.format(**kwargs) if kwargs else text
+
 
 # ==========================================================
 # ☁️ CONNECTEUR CLOUD UPSTASH (PERSISTANCE DES COMPTES)
@@ -174,9 +290,10 @@ def charger_un_compte(nom_trader):
     )
     c_cloud = cloud_get(f"compte_trader_{nom_trader}")
     if c_cloud and isinstance(c_cloud, dict) and "solde" in c_cloud:
-        if "total_trades" not in c_cloud or c_cloud["total_trades"] == 0:
-            c_cloud["total_trades"] = max(c_cloud.get("total_trades", 0), init_vals["total_trades"])
-            c_cloud["total_wins"] = max(c_cloud.get("total_wins", 0), init_vals["total_wins"])
+        if "total_trades" not in c_cloud:
+            c_cloud["total_trades"] = init_vals["total_trades"]
+        if "total_wins" not in c_cloud:
+            c_cloud["total_wins"] = init_vals["total_wins"]
         if "historique" not in c_cloud:
             c_cloud["historique"] = []
         if "positions" not in c_cloud:
@@ -232,9 +349,10 @@ def charger_tous_les_comptes_rapide():
             {"solde": 1000.0, "capital_initial": 1000.0, "total_trades": 0, "total_wins": 0},
         )
         if c and isinstance(c, dict) and "solde" in c:
-            if "total_trades" not in c or c["total_trades"] == 0:
-                c["total_trades"] = max(c.get("total_trades", 0), init_vals["total_trades"])
-                c["total_wins"] = max(c.get("total_wins", 0), init_vals["total_wins"])
+            if "total_trades" not in c:
+                c["total_trades"] = init_vals["total_trades"]
+            if "total_wins" not in c:
+                c["total_wins"] = init_vals["total_wins"]
             comptes[t_nom] = c
         else:
             comptes[t_nom] = charger_un_compte(t_nom)
@@ -800,21 +918,21 @@ def section_agent_gemini_haut():
     
     bases_ia = charger_paires_radar()
     with c_titre:
-        st.markdown("#### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
-        st.caption("Analyse à la demande : Indicateurs techniques + Contexte Macro en direct.")
+        st.markdown(f"#### {t('gemini_title')}")
+        st.caption(t("gemini_caption"))
     with c_select:
         crypto_cible = st.selectbox(
-            "Crypto à analyser :",
+            "Crypto :",
             bases_ia,
             key="gemini_top_select",
             label_visibility="collapsed",
         )
         paire_cible = f"{crypto_cible}/USDT"
     with c_btn:
-        lancer = st.button(f"🔍 Analyser {paire_cible} en direct", type="primary", use_container_width=True)
+        lancer = st.button(t("analyze_btn", pair=paire_cible), type="primary", use_container_width=True)
 
     if lancer:
-        with st.spinner(f"Analyse de {paire_cible} en cours (Technique + Macro Web)..."):
+        with st.spinner(f"Analyse de {paire_cible} en cours..."):
             prix_dict = obtenir_prix_live_multi_sources([crypto_cible])
             prix_live = prix_dict.get(paire_cible, "N/A")
             _, df_15 = fetch_single_mexc_kline(crypto_cible, "15m", 30)
@@ -863,7 +981,7 @@ def section_agent_gemini_haut():
 
 @st.fragment(run_every="15s")
 def fragment_ict_racine(trader_courant):
-    st.markdown("#### 💧 Scanner ICT (15m) : 1. Sweep Liquidité ➔ 2. MSS ➔ 3. FVG")
+    st.markdown(t("ict_header"))
     bases = charger_paires_radar()
     donnees = charger_donnees_marche_globales(bases)
     prix_mexc = obtenir_prix_live_multi_sources(bases)
@@ -935,7 +1053,7 @@ def fragment_ict_racine(trader_courant):
 
 @st.fragment(run_every="12s")
 def fragment_scalp_racine(trader_courant):
-    st.markdown("#### ⚡ Radar Scalping (1m) : Cassure de structure + Pic de Volume / FVG")
+    st.markdown(t("scalp_header"))
     bases = charger_paires_radar()
     donnees = charger_donnees_marche_globales(bases)
     prix_mexc = obtenir_prix_live_multi_sources(bases)
@@ -998,7 +1116,7 @@ def fragment_portefeuille_racine(trader_courant):
     with col_prof:
         idx_def = noms_profils.index(trader_courant) if trader_courant in noms_profils else 0
         profil_inspecte = st.selectbox(
-            "👤 Voir le portefeuille et tous les trades du profil :",
+            t("inspect_profile"),
             noms_profils,
             index=idx_def,
             key="select_inspect_profile",
@@ -1011,7 +1129,7 @@ def fragment_portefeuille_racine(trader_courant):
     with col_auto:
         st.write("")
         etat_auto = st.toggle(
-            f"⚡ Autopilote ICT & Scalping ({profil_inspecte})",
+            t("autopilot", user=profil_inspecte),
             value=c_prof.get("auto_actif", False),
             key=f"auto_toggle_{profil_inspecte}",
         )
@@ -1021,21 +1139,19 @@ def fragment_portefeuille_racine(trader_courant):
             mettre_a_jour_un_compte(profil_inspecte, set_auto_state)
             st.rerun()
 
+    # CORRECTION DÉFINITIVE DU RESET : SOLDE STRICTEMENT FIXÉ À 1000.00 USDT
     with col_reset:
         st.write("")
-        if st.button("🔄 Reset 1000$", key=f"reset_{profil_inspecte}"):
-            def reset_fn(c):
-                init_v = TRADERS_INITIAUX.get(
-                    profil_inspecte,
-                    {"solde": 1000.0, "capital_initial": 1000.0, "total_trades": 0, "total_wins": 0},
-                )
-                c["solde"] = init_v["solde"]
-                c["capital_initial"] = init_v["capital_initial"]
-                c["total_trades"] = init_v["total_trades"]
-                c["total_wins"] = init_v["total_wins"]
+        if st.button(t("reset_btn"), key=f"reset_{profil_inspecte}"):
+            def reset_strict_1000(c):
+                c["solde"] = 1000.0
+                c["capital_initial"] = 1000.0
+                c["total_trades"] = 0
+                c["total_wins"] = 0
                 c["positions"] = {}
                 c["historique"] = []
-            mettre_a_jour_un_compte(profil_inspecte, reset_fn)
+            mettre_a_jour_un_compte(profil_inspecte, reset_strict_1000)
+            st.success(f"Solde de {profil_inspecte} réinitialisé à 1000.00 USDT !")
             st.rerun()
 
     pnl_realise = c_prof["solde"] - c_prof.get("capital_initial", 1000.0)
@@ -1044,14 +1160,14 @@ def fragment_portefeuille_racine(trader_courant):
     winrate = (nb_wins / nb_trades * 100) if nb_trades > 0 else 0.0
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("💰 Solde Réalisé", f"{c_prof['solde']:.2f} USDT")
-    m2.metric("📈 PnL Net", f"{pnl_realise:+.2f} USDT")
-    m3.metric("🎯 Winrate", f"{winrate:.1f}%")
-    m4.metric("📊 Total Trades Exécutés", f"{nb_trades}")
+    m1.metric(t("realized_balance"), f"{c_prof['solde']:.2f} USDT")
+    m2.metric(t("net_pnl"), f"{pnl_realise:+.2f} USDT")
+    m3.metric(t("winrate"), f"{winrate:.1f}%")
+    m4.metric(t("total_trades"), f"{nb_trades}")
 
     st.markdown("---")
 
-    st.markdown(f"#### 🚀 Positions Actives en Direct ({profil_inspecte}) :")
+    st.markdown(f"#### {t('active_pos', user=profil_inspecte)}")
     if c_prof.get("positions"):
         for cle, pos in list(c_prof["positions"].items()):
             strat_nom = pos.get("strategie", "⚡ Scalping 1m")
@@ -1077,8 +1193,8 @@ def fragment_portefeuille_racine(trader_courant):
             else:
                 pnl_flottant, roe_flottant = 0.0, 0.0
 
-            pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
-            url_mexc_pos = get_mexc_futures_url(paire_nom)
+                pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
+                url_mexc_pos = get_mexc_futures_url(paire_nom)
 
             col_p1, col_p2 = st.columns([4, 1])
             with col_p1:
@@ -1101,7 +1217,7 @@ def fragment_portefeuille_racine(trader_courant):
                     unsafe_allow_html=True,
                 )
             with col_p2:
-                if st.button("🛑 Clôturer", key=f"close_{profil_inspecte}_{cle}"):
+                if st.button(t("close_btn"), key=f"close_{profil_inspecte}_{cle}"):
                     def couper_pos_profil(c):
                         if cle in c.get("positions", {}):
                             c["solde"] += pnl_flottant
@@ -1125,25 +1241,25 @@ def fragment_portefeuille_racine(trader_courant):
                     mettre_a_jour_un_compte(profil_inspecte, couper_pos_profil)
                     st.rerun()
     else:
-        st.caption(f"👀 Aucune position ouverte en ce moment pour {profil_inspecte}.")
+        st.caption(t("no_pos", user=profil_inspecte))
 
     st.markdown("---")
 
     historique_complet = c_prof.get("historique", [])
-    st.markdown(f"#### 📜 Historique Intégral des Trades de {profil_inspecte} ({len(historique_complet)} trades enregistrés)")
+    st.markdown(f"#### {t('history_title', user=profil_inspecte, count=len(historique_complet))}")
 
     if historique_complet:
         f_col1, f_col2 = st.columns(2)
         with f_col1:
             filtre_strat = st.selectbox(
-                "Filtrer par Stratégie :",
-                ["Toutes les stratégies", "💧 ICT", "⚡ Scalping"],
+                t("filt_strat"),
+                [t("filt_all_strat"), "💧 ICT", "⚡ Scalping"],
                 key=f"filt_strat_{profil_inspecte}",
             )
         with f_col2:
             filtre_res = st.selectbox(
-                "Filtrer par Résultat :",
-                ["Tous les trades", "Gagnants uniquement ✅", "Perdants uniquement ❌"],
+                t("filt_res"),
+                [t("filt_all_res"), t("filt_win"), t("filt_loss")],
                 key=f"filt_res_{profil_inspecte}",
             )
 
@@ -1156,9 +1272,9 @@ def fragment_portefeuille_racine(trader_courant):
                 continue
             if "Scalping" in filtre_strat and "Scalp" not in strat_tr:
                 continue
-            if "Gagnants" in filtre_res and not win_tr:
+            if ("Gagnants" in filtre_res or "Winners" in filtre_res) and not win_tr:
                 continue
-            if "Perdants" in filtre_res and win_tr:
+            if ("Perdants" in filtre_res or "Losers" in filtre_res) and win_tr:
                 continue
 
             lignes_hist.append({
@@ -1178,7 +1294,7 @@ def fragment_portefeuille_racine(trader_courant):
 
             csv_bytes = df_hist.to_csv(index=False).encode("utf-8")
             st.download_button(
-                label=f"📥 Télécharger tous les trades de {profil_inspecte} (.CSV)",
+                label=t("download_csv", user=profil_inspecte),
                 data=csv_bytes,
                 file_name=f"trades_{profil_inspecte}.csv",
                 mime="text/csv",
@@ -1186,10 +1302,10 @@ def fragment_portefeuille_racine(trader_courant):
         else:
             st.info("Aucun trade ne correspond à ces filtres.")
     else:
-        st.info(f"Aucun trade clôturé dans le journal de {profil_inspecte} pour le moment.")
+        st.info(t("no_trades"))
 
     st.markdown("---")
-    st.markdown("#### 🏆 Comparatif Multi-Profils")
+    st.markdown(f"#### {t('multi_comp')}")
     liste_classement = []
     for nom_p, cp in comptes_tous.items():
         if not isinstance(cp, dict):
@@ -1218,15 +1334,15 @@ liste_noms = list(comptes_actuels.keys())
 if "trader_session" not in st.session_state:
     st.session_state.trader_session = "Thomas" if "Thomas" in liste_noms else liste_noms[0]
 
-st.sidebar.markdown("### 👤 Profil Trader Actif")
+st.sidebar.markdown(f"### 👤 {t('user_space')}")
 idx_nom = liste_noms.index(st.session_state.trader_session) if st.session_state.trader_session in liste_noms else 0
-choix_trader = st.sidebar.selectbox("Sélectionner le profil :", liste_noms, index=idx_nom)
+choix_trader = st.sidebar.selectbox(t("connected_as"), liste_noms, index=idx_nom)
 st.session_state.trader_session = choix_trader
 trader_courant = st.session_state.trader_session
 
-with st.sidebar.expander("➕ Créer un nouveau profil"):
-    nouveau_nom = st.text_input("Prénom / Pseudo :").strip()
-    if st.button("Valider la création"):
+with st.sidebar.expander(f"➕ {t('create_profile')}"):
+    nouveau_nom = st.text_input(t("input_name")).strip()
+    if st.button(t("validate")):
         if nouveau_nom:
             charger_un_compte(nouveau_nom)
             custom_traders = cloud_get("liste_noms_traders") or []
@@ -1236,9 +1352,9 @@ with st.sidebar.expander("➕ Créer un nouveau profil"):
             st.session_state.trader_session = nouveau_nom
             st.rerun()
 
-with st.sidebar.expander("🪙 Gestion des Paires Crypto", expanded=False):
-    nouvelle_paire_in = st.text_input("Ajouter (ex: DOGE, SUI, NEAR) :").strip().upper()
-    if st.button("➕ Ajouter au Radar"):
+with st.sidebar.expander(f"🪙 {t('manage_pairs')}", expanded=False):
+    nouvelle_paire_in = st.text_input(t("add_crypto_ph")).strip().upper()
+    if st.button(t("add_crypto_btn")):
         if nouvelle_paire_in:
             nom_nettoye = nouvelle_paire_in.replace("/USDT", "").replace("USDT", "").strip().upper()
             p_actuelles = charger_paires_radar()
@@ -1264,11 +1380,11 @@ with st.sidebar.expander("🪙 Gestion des Paires Crypto", expanded=False):
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.markdown(
-        f"### ⚡ Cockpit Pro <span class='user-badge'>👤 Profil : {trader_courant}</span>",
+        f"### ⚡ {t('cockpit_title')} <span class='user-badge'>👤 {trader_courant}</span>",
         unsafe_allow_html=True,
     )
 with col_h2:
-    st.caption(f"🕒 Heure de Paris : **{obtenir_date_heure_paris('%H:%M:%S')}**")
+    st.caption(f"🕒 {t('paris_time')} **{obtenir_date_heure_paris('%H:%M:%S')}**")
 
 components.html(
     """
@@ -1309,32 +1425,32 @@ section_agent_gemini_haut()
 onglet_actif = st.radio(
     "Navigation Cockpit :",
     [
-        "💧 ICT (Smart Money 15m)",
-        "⚡ Scanner Scalping (1m)",
-        "🌍 Macro Globale (Courbes Live)",
-        f"📜 Trades & Portefeuille ({trader_courant})",
+        t("tab_ict"),
+        t("tab_scalp"),
+        t("tab_macro"),
+        t("tab_trades", user=trader_courant),
     ],
     horizontal=True,
     label_visibility="collapsed",
 )
 
-if onglet_actif == "💧 ICT (Smart Money 15m)":
+if onglet_actif == t("tab_ict"):
     fragment_ict_racine(trader_courant)
 
-elif onglet_actif == "⚡ Scanner Scalping (1m)":
+elif onglet_actif == t("tab_scalp"):
     fragment_scalp_racine(trader_courant)
 
-elif onglet_actif == "🌍 Macro Globale (Courbes Live)":
-    st.markdown("#### 🌍 Courbes Macro-Économiques en Temps Réel (Flux WebSocket Direct)")
-    st.caption("Visualise en un coup d'œil la tendance du Pétrole, du S&P 500, du Nasdaq, du CAC 40, de l'Or, de l'Euro et du VIX sans aucun rechargement.")
+elif onglet_actif == t("tab_macro"):
+    st.markdown(t("macro_header"))
+    st.caption(t("macro_caption"))
 
     mode_macro = st.radio(
-        "Mode d'affichage :",
-        ["📊 Grille Panoramique (Les 9 Courbes simultanées)", "🔍 Graphique Pro Interactif (Bougies & Indicateurs)"],
+        t("mode_display"),
+        [t("grid_view"), t("pro_view")],
         horizontal=True,
     )
 
-    if "Grille" in mode_macro:
+    if t("grid_view") in mode_macro:
         actifs_macro = [
             ("🛢️ US Oil (WTI)", "TVC:USOIL"),
             ("🛢️ UK Oil (Brent)", "TVC:UKOIL"),
@@ -1386,7 +1502,7 @@ elif onglet_actif == "🌍 Macro Globale (Courbes Live)":
             "💶 EUR / USD": "FX:EURUSD",
             "⚠️ Indice VIX": "TVC:VIX",
         }
-        choix_actif_pro = st.selectbox("Choisir l'actif à inspecter :", list(dict_actifs_pro.keys()))
+        choix_actif_pro = st.selectbox("Actif :", list(dict_actifs_pro.keys()))
         sym_selectionne = dict_actifs_pro[choix_actif_pro]
 
         components.html(
