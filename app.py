@@ -80,7 +80,7 @@ st.markdown(
 )
 
 # ==========================================================
-# 🌐 SYSTÈME BILINGUE (FR / EN)
+# 🌐 SYSTÈME BILINGUE COMPLET (FR / EN)
 # ==========================================================
 I18N = {
     "FR": {
@@ -128,6 +128,25 @@ I18N = {
         "download_csv": "📥 Télécharger tous les trades de {user} (.CSV)",
         "no_trades": "Aucun trade dans le journal pour le moment.",
         "multi_comp": "🏆 Comparatif Multi-Profils",
+        "col_pair": "Paire",
+        "col_price": "Prix",
+        "col_low_liq": "Liquidité Basse (15m)",
+        "col_high_liq": "Liquidité Haute (15m)",
+        "col_rsi_15": "RSI 15m",
+        "col_ict_steps": "Étapes ICT détectées",
+        "ict_sweep_low": "1️⃣ Sweep Bas ✅",
+        "ict_sweep_high": "1️⃣ Sweep Haut ✅",
+        "ict_mss_bull": "2️⃣ MSS Haussier ✅",
+        "ict_mss_bear": "2️⃣ MSS Baissier ✅",
+        "ict_observing": "⚪ En observation",
+        "ict_waiting": "⚪ Aucun alignement complet (Sweep + MSS + FVG) sur la bougie actuelle. État des paires en direct :",
+        "scalp_col_sig": "Signal 1m",
+        "scalp_col_trend": "Tendance 15m",
+        "scalp_col_rsi1": "RSI 1m",
+        "scalp_col_vol": "Volume Ratio",
+        "trend_bull": "🟢 Haussière",
+        "trend_bear": "🔴 Baissière",
+        "scanning": "⚪ En veille",
     },
     "EN": {
         "cockpit_title": "Cockpit Pro",
@@ -174,6 +193,25 @@ I18N = {
         "download_csv": "📥 Download all trades of {user} (.CSV)",
         "no_trades": "No trades in journal yet.",
         "multi_comp": "🏆 Multi-Profile Leaderboard",
+        "col_pair": "Pair",
+        "col_price": "Price",
+        "col_low_liq": "Low Liquidity (15m)",
+        "col_high_liq": "High Liquidity (15m)",
+        "col_rsi_15": "15m RSI",
+        "col_ict_steps": "Detected ICT Steps",
+        "ict_sweep_low": "1️⃣ Low Sweep ✅",
+        "ict_sweep_high": "1️⃣ High Sweep ✅",
+        "ict_mss_bull": "2️⃣ Bullish MSS ✅",
+        "ict_mss_bear": "2️⃣ Bearish MSS ✅",
+        "ict_observing": "⚪ Monitoring",
+        "ict_waiting": "⚪ No full setup (Sweep + MSS + FVG) on current candle. Live pairs status:",
+        "scalp_col_sig": "1m Signal",
+        "scalp_col_trend": "15m Trend",
+        "scalp_col_rsi1": "1m RSI",
+        "scalp_col_vol": "Volume Ratio",
+        "trend_bull": "🟢 Bullish",
+        "trend_bear": "🔴 Bearish",
+        "scanning": "⚪ Scanning",
     },
 }
 
@@ -593,19 +631,19 @@ def scanner_marche_ict(donnees_globales, bases_actives):
 
             statut_etapes = []
             if sweep_bullish:
-                statut_etapes.append("1️⃣ Sweep Bas ✅")
+                statut_etapes.append(t("ict_sweep_low"))
             elif sweep_bearish:
-                statut_etapes.append("1️⃣ Sweep Haut ✅")
+                statut_etapes.append(t("ict_sweep_high"))
 
             if mss_bullish:
-                statut_etapes.append("2️⃣ MSS Haussier ✅")
+                statut_etapes.append(t("ict_mss_bull"))
             elif mss_bearish:
-                statut_etapes.append("2️⃣ MSS Baissier ✅")
+                statut_etapes.append(t("ict_mss_bear"))
 
             if fvg_bullish:
-                statut_etapes.append(f"3️⃣ FVG Bull ({formater_prix(c1_high)}) ✅")
+                statut_etapes.append(f"3️⃣ Bull FVG ({formater_prix(c1_high)}) ✅" if LANG == "EN" else f"3️⃣ FVG Bull ({formater_prix(c1_high)}) ✅")
             elif fvg_bearish:
-                statut_etapes.append(f"3️⃣ FVG Bear ({formater_prix(c1_low)}) ✅")
+                statut_etapes.append(f"3️⃣ Bear FVG ({formater_prix(c1_low)}) ✅" if LANG == "EN" else f"3️⃣ FVG Bear ({formater_prix(c1_low)}) ✅")
 
             if sweep_bullish and mss_bullish and fvg_bullish and (c3_low - c1_high) > 0:
                 risque = max(abs(c1_high - c1_low), prix_actuel * 0.005)
@@ -620,7 +658,7 @@ def scanner_marche_ict(donnees_globales, bases_actives):
                     "tp2": c1_high + (2.5 * risque),
                     "marge": 50.0,
                     "levier": 30,
-                    "motif": "Séquence ICT : Sweep Bas ➔ MSS ➔ FVG",
+                    "motif": "ICT Sequence: Sweep Low ➔ MSS ➔ FVG" if LANG == "EN" else "Séquence ICT : Sweep Bas ➔ MSS ➔ FVG",
                 })
 
             elif sweep_bearish and mss_bearish and fvg_bearish and (c1_low - c3_high) > 0:
@@ -636,16 +674,16 @@ def scanner_marche_ict(donnees_globales, bases_actives):
                     "tp2": c1_low - (2.5 * risque),
                     "marge": 50.0,
                     "levier": 30,
-                    "motif": "Séquence ICT : Sweep Haut ➔ MSS ➔ FVG",
+                    "motif": "ICT Sequence: Sweep High ➔ MSS ➔ FVG" if LANG == "EN" else "Séquence ICT : Sweep Haut ➔ MSS ➔ FVG",
                 })
 
             resume_ict.append({
-                "Paire": f"{nom_court}/USDT",
-                "Prix": formater_prix(prix_actuel),
-                "Liquidité Basse (15m)": formater_prix(low_recent),
-                "Liquidité Haute (15m)": formater_prix(high_recent),
-                "RSI 15m": f"{rsi_15:.1f}",
-                "Étapes ICT détectées": " | ".join(statut_etapes) if statut_etapes else "⚪ En observation",
+                t("col_pair"): f"{nom_court}/USDT",
+                t("col_price"): formater_prix(prix_actuel),
+                t("col_low_liq"): formater_prix(low_recent),
+                t("col_high_liq"): formater_prix(high_recent),
+                t("col_rsi_15"): f"{rsi_15:.1f}",
+                t("col_ict_steps"): " | ".join(statut_etapes) if statut_etapes else t("ict_observing"),
             })
         except Exception:
             continue
@@ -696,18 +734,18 @@ def scanner_scalping_1m(donnees_globales, bases_actives):
             mss_baissier = (prix < low_s_1m) and (prix < open_p)
             mss_haussier = (prix > high_s_1m) and (prix > open_p)
 
-            signal, motif, sl, tp1, tp2 = None, "⚪ Calme", None, None, None
+            signal, motif, sl, tp1, tp2 = None, t("scanning"), None, None, None
 
             if mss_haussier and (vol_fort or fvg_bull_1m or gros_corps):
                 signal = "LONG 🟢"
-                motif = "Scalp 1m : Cassure + Volume/FVG"
+                motif = "Scalp 1m: Breakout + Vol/FVG" if LANG == "EN" else "Scalp 1m : Cassure + Volume/FVG"
                 dist = max(prix - low_s_1m + (0.10 * atr_1m), 0.55 * atr_1m, prix * 0.005)
                 sl = prix - dist
                 tp1 = prix + (1.8 * dist)
                 tp2 = prix + (3.5 * dist)
             elif mss_baissier and (vol_fort or fvg_bear_1m or gros_corps):
                 signal = "SHORT 🔴"
-                motif = "Scalp 1m : Cassure + Volume/FVG"
+                motif = "Scalp 1m: Breakout + Vol/FVG" if LANG == "EN" else "Scalp 1m : Cassure + Volume/FVG"
                 dist = max(high_s_1m - prix + (0.10 * atr_1m), 0.55 * atr_1m, prix * 0.005)
                 sl = prix + dist
                 tp1 = prix - (1.8 * dist)
@@ -728,13 +766,13 @@ def scanner_scalping_1m(donnees_globales, bases_actives):
                 })
 
             tableau_scalp.append({
-                "Paire": f"{nom_court}/USDT",
-                "Prix Actuel": formater_prix(prix),
-                "Signal 1m": signal if signal else "⚪ En veille",
-                "Tendance 15m": "🟢 Haussière" if prix > ema_50_15 else "🔴 Baissière",
-                "RSI 1m": f"{rsi_1m:.1f}",
-                "RSI 15m": f"{rsi_15m:.1f}",
-                "Volume Ratio": f"x{vol_ratio:.1f}",
+                t("col_pair"): f"{nom_court}/USDT",
+                t("col_price"): formater_prix(prix),
+                t("scalp_col_sig"): signal if signal else t("scanning"),
+                t("scalp_col_trend"): t("trend_bull") if prix > ema_50_15 else t("trend_bear"),
+                t("scalp_col_rsi1"): f"{rsi_1m:.1f}",
+                t("col_rsi_15"): f"{rsi_15m:.1f}",
+                t("scalp_col_vol"): f"x{vol_ratio:.1f}",
             })
         except Exception:
             continue
@@ -1039,9 +1077,9 @@ def fragment_ict_racine(trader_courant):
                     st.success(f"Trade ICT {sig['paire']} enregistré sur {trader_courant} !")
     else:
         st.markdown(
-            """
+            f"""
             <div style="background-color:#0D1117; border-radius:8px; padding:14px; text-align:center; border:1px dashed #30363D; margin-bottom:12px;">
-                <span style="color:#8B949E;">⚪ Aucun alignement complet (Sweep + MSS + FVG) sur la bougie actuelle. État des paires en direct :</span>
+                <span style="color:#8B949E;">{t('ict_waiting')}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1139,7 +1177,6 @@ def fragment_portefeuille_racine(trader_courant):
             mettre_a_jour_un_compte(profil_inspecte, set_auto_state)
             st.rerun()
 
-    # CORRECTION DÉFINITIVE DU RESET : SOLDE STRICTEMENT FIXÉ À 1000.00 USDT
     with col_reset:
         st.write("")
         if st.button(t("reset_btn"), key=f"reset_{profil_inspecte}"):
@@ -1193,8 +1230,9 @@ def fragment_portefeuille_racine(trader_courant):
             else:
                 pnl_flottant, roe_flottant = 0.0, 0.0
 
-                pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
-                url_mexc_pos = get_mexc_futures_url(paire_nom)
+            # CORRECTION : pnl_color est maintenant TOUJOURS défini (hors du if/else)
+            pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
+            url_mexc_pos = get_mexc_futures_url(paire_nom)
 
             col_p1, col_p2 = st.columns([4, 1])
             with col_p1:
