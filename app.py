@@ -46,6 +46,15 @@ st.markdown(
     .opt-price { color: #FFD700; font-size: 16px; font-weight: bold; }
     .timer-badge { background-color: #161B22; color: #00E676; padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: bold; border: 1px solid #30363D; }
     
+    /* Style Barre d'onglets Pro sans bug d'empilement */
+    div[role="radiogroup"] {
+        background-color: #0D1117;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #30363D;
+        margin-bottom: 14px;
+    }
+    
     .mexc-btn {
         background: linear-gradient(135deg, #0d1f18 0%, #06140e 100%);
         color: #14F195 !important;
@@ -392,7 +401,7 @@ def analyser_marche_avec_gemini(paire, prix_actuel, rsi_1m, rsi_15m, range_15m):
         """
         
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[{"google_search": {}}],
@@ -619,16 +628,10 @@ def scanner_scalping_1m(donnees_globales, bases_actives):
 # ⚙️ MOTEUR D'EXÉCUTION ET DE SUIVI DES TRADES PAR PROFIL
 # ==========================================================
 def synchroniser_trades_du_profil(nom_trader, prix_mexc_direct, signaux_ict, signaux_scalp):
-    """
-    Met à jour les positions ouvertes (TP1, Breakeven, TP2, SL, Time-Stop)
-    et prend automatiquement les nouveaux signaux si l'Autopilote du profil est actif.
-    Tous les trades sont enregistrés dans l'historique permanent du profil.
-    """
     def maj_fn(compte):
         maintenant_ts = time.time()
         date_str = obtenir_date_heure_paris("%d/%m %H:%M:%S")
 
-        # 1. Gestion des positions ouvertes
         for cle_pos, pos in list(compte.get("positions", {}).items()):
             paire_p = pos.get("paire", "SOL/USDT")
             strat_p = pos.get("strategie", "⚡ Scalping 1m")
@@ -655,12 +658,10 @@ def synchroniser_trades_du_profil(nom_trader, prix_mexc_direct, signaux_ict, sig
             )
             roe_pct = (pnl_flottant / marge) * 100
 
-            # Verrouillage automatique du Breakeven dès +25% ROE
             if roe_pct >= 25.0 and not tp1_hit:
                 pos["sl"] = p_entree * (1.001 if is_long else 0.999)
                 sl = pos["sl"]
 
-            # Time-Stop (25 min pour Scalping 1m, 2h pour ICT 15m)
             max_duree = 7200 if "ICT" in strat_p else 1500
             if duree_sec > max_duree:
                 compte["solde"] += pnl_flottant
@@ -680,7 +681,6 @@ def synchroniser_trades_du_profil(nom_trader, prix_mexc_direct, signaux_ict, sig
                 del compte["positions"][cle_pos]
                 continue
 
-            # Vérification TP1 / TP2 / SL
             if is_long:
                 if not tp1_hit and p_live >= tp1:
                     pos["tp1_hit"] = True
@@ -764,7 +764,6 @@ def synchroniser_trades_du_profil(nom_trader, prix_mexc_direct, signaux_ict, sig
                     })
                     del compte["positions"][cle_pos]
 
-        # 2. Ouverture automatique des trades générés si l'Autopilote est activé (max 5 simultanés)
         if compte.get("auto_actif", False):
             tous_signaux = signaux_ict + signaux_scalp
             for sig in tous_signaux:
@@ -789,6 +788,425 @@ def synchroniser_trades_du_profil(nom_trader, prix_mexc_direct, signaux_ict, sig
                     }
 
     mettre_a_jour_un_compte(nom_trader, maj_fn)
+
+
+# ==========================================================
+# 🧩 FRAGMENTS DÉCLARÉS À LA RACINE (ZÉRO DUPLICATION DE TABLEAUX)
+# ==========================================================
+@st.fragment
+def section_agent_gemini_haut():
+    st.markdown('<div class="gemini-box">', unsafe_allow_html=True)
+    c_titre, c_select, c_btn = st.columns([2, 1.5, 1.5])
+    
+    bases_ia = charger_paires_radar()
+    with c_titre:
+        st.markdown("#### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
+        st.caption("Analyse à la demande : Indicateurs techniques + Contexte Macro en direct.")
+    with c_select:
+        crypto_cible = st.selectbox(
+            "Crypto à analyser :",
+            bases_ia,
+            key="gemini_top_select",
+            label_visibility="collapsed",
+        )
+        paire_cible = f"{crypto_cible}/USDT"
+    with c_btn:
+        lancer = st.button(f"🔍 Analyser {paire_cible} en direct", type="primary", use_container_width=True)
+
+    if lancer:
+        with st.spinner(f"Analyse de {paire_cible} en cours (Technique + Macro Web)..."):
+            prix_dict = obtenir_prix_live_multi_sources([crypto_cible])
+            prix_live = prix_dict.get(paire_cible, "N/A")
+            _, df_15 = fetch_single_mexc_kline(crypto_cible, "15m", 30)
+            _, df_1 = fetch_single_mexc_kline(crypto_cible, "1m", 30)
+            
+            rsi_15_str, range_15_str, rsi_1_str = "50.0", "N/A", "50.0"
+            if df_15 is not None and len(df_15) >= 15:
+                rsi_15_str = f"{float(calculer_rsi_series(df_15['Close'], 14).iloc[-1]):.1f}"
+                range_15_str = f"[{formater_prix(df_15['Low'].min())} - {formater_prix(df_15['High'].max())}]"
+            if df_1 is not None and len(df_1) >= 15:
+                rsi_1_str = f"{float(calculer_rsi_series(df_1['Close'], 7).iloc[-1]):.1f}"
+
+            st.session_state.dernier_rapport_ia = analyser_marche_avec_gemini(
+                paire_cible, prix_live, rsi_1_str, rsi_15_str, range_15_str
+            )
+            st.session_state.derniere_paire_ia = paire_cible
+
+    rapport = st.session_state.get("dernier_rapport_ia")
+    paire_rap = st.session_state.get("derniere_paire_ia", "")
+    if rapport:
+        if "erreur" in rapport:
+            st.error(rapport["erreur"])
+        else:
+            reco = rapport.get("recommandation", "ATTENTE")
+            couleur_reco = "#00E676" if reco == "ACHAT" else "#FF1744" if reco == "VENTE" else "#FFB300"
+            st.markdown(
+                f"""
+                <div style="background-color:#080B10; border-left: 4px solid {couleur_reco}; border-radius: 6px; padding: 12px; margin-top: 8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                        <span style="font-size:16px; font-weight:bold; color:{couleur_reco};">
+                            🎯 [{paire_rap}] Signal IA : {reco}
+                        </span>
+                        <span style="background-color:#161B22; padding:3px 8px; border-radius:4px; font-size:12px;">
+                            Confiance : <b>{rapport.get('confiance', 0)}%</b>
+                        </span>
+                    </div>
+                    <div style="font-size:13px; margin-bottom:4px;"><b>📊 Technique :</b> {rapport.get('analyse_technique', '')}</div>
+                    <div style="font-size:13px; margin-bottom:4px;"><b>🌍 Macro & News :</b> {rapport.get('analyse_macro', '')}</div>
+                    <div style="font-size:13px; color:#FFD700;"><b>💡 Plan d'action :</b> {rapport.get('justification', '')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+@st.fragment(run_every="15s")
+def fragment_ict_racine(trader_courant):
+    st.markdown("#### 💧 Scanner ICT (15m) : 1. Sweep Liquidité ➔ 2. MSS ➔ 3. FVG")
+    bases = charger_paires_radar()
+    donnees = charger_donnees_marche_globales(bases)
+    prix_mexc = obtenir_prix_live_multi_sources(bases)
+    signaux_ict, resume_ict = scanner_marche_ict(donnees, bases)
+    signaux_sc, _ = scanner_scalping_1m(donnees, bases)
+
+    synchroniser_trades_du_profil(trader_courant, prix_mexc, signaux_ict, signaux_sc)
+
+    if signaux_ict:
+        for sig in signaux_ict:
+            is_long = "LONG" in sig["sens"]
+            couleur = "#00E676" if is_long else "#FF1744"
+            classe_carte = "alert-card-long" if is_long else "alert-card-short"
+            url_mexc = get_mexc_futures_url(sig["paire"])
+
+            c_ict1, c_ict2 = st.columns([4, 1])
+            with c_ict1:
+                st.markdown(
+                    f"""
+                    <div class="{classe_carte}">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:16px; font-weight:bold; color:{couleur};">
+                                💧 {sig['paire']} — {sig['sens']} (Levier x{sig['levier']})
+                            </span>
+                            <span class="timer-badge">{sig['motif']}</span>
+                        </div>
+                        <hr style="border-color:rgba(255,255,255,0.1); margin:8px 0;">
+                        🎯 <b>Entrée Limit (FVG) :</b> <span class="opt-price">{formater_prix(sig['entree'])} USDT</span> (Actuel : {formater_prix(sig['prix_actuel'])})<br>
+                        🛑 <b>Stop-Loss :</b> {formater_prix(sig['sl'])} USDT | 
+                        💰 <b>TP1 :</b> {formater_prix(sig['tp1'])} | 🚀 <b>TP2 :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(sig['tp2'])} USDT</span><br>
+                        <a href="{url_mexc}" target="_blank" class="mexc-btn">🚀 Ouvrir sur MEXC Futures ↗️</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c_ict2:
+                if st.button(f"💧 Prendre ({trader_courant})", key=f"take_ict_{sig['paire']}"):
+                    def ouvrir_pos_ict(c):
+                        c["positions"][f"ICT_{sig['paire']}"] = {
+                            "strategie": "💧 ICT 15m",
+                            "paire": sig["paire"],
+                            "sens": sig["sens"],
+                            "motif": sig["motif"],
+                            "entree": sig["entree"],
+                            "sl": sig["sl"],
+                            "tp1": sig["tp1"],
+                            "tp2": sig["tp2"],
+                            "marge": sig["marge"],
+                            "levier": sig["levier"],
+                            "tp1_hit": False,
+                            "date_open": obtenir_date_heure_paris("%d/%m %H:%M:%S"),
+                            "open_timestamp": time.time(),
+                        }
+                    mettre_a_jour_un_compte(trader_courant, ouvrir_pos_ict)
+                    st.success(f"Trade ICT {sig['paire']} enregistré sur {trader_courant} !")
+    else:
+        st.markdown(
+            """
+            <div style="background-color:#0D1117; border-radius:8px; padding:14px; text-align:center; border:1px dashed #30363D; margin-bottom:12px;">
+                <span style="color:#8B949E;">⚪ Aucun alignement complet (Sweep + MSS + FVG) sur la bougie actuelle. État des paires en direct :</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if resume_ict:
+        st.dataframe(pd.DataFrame(resume_ict), hide_index=True, use_container_width=True, key="df_ict_unique")
+
+
+@st.fragment(run_every="12s")
+def fragment_scalp_racine(trader_courant):
+    st.markdown("#### ⚡ Radar Scalping (1m) : Cassure de structure + Pic de Volume / FVG")
+    bases = charger_paires_radar()
+    donnees = charger_donnees_marche_globales(bases)
+    prix_mexc = obtenir_prix_live_multi_sources(bases)
+    signaux_ict, _ = scanner_marche_ict(donnees, bases)
+    signaux_sc, tableau_sc = scanner_scalping_1m(donnees, bases)
+
+    synchroniser_trades_du_profil(trader_courant, prix_mexc, signaux_ict, signaux_sc)
+
+    if signaux_sc:
+        for sig in signaux_sc:
+            is_long = "LONG" in sig["sens"]
+            classe = "alert-card-long" if is_long else "alert-card-short"
+            url_mexc = get_mexc_futures_url(sig["paire"])
+
+            c_card, c_action = st.columns([4, 1])
+            with c_card:
+                st.markdown(
+                    f"""
+                    <div class="{classe}">
+                        <b>⚡ {sig['sens']} : {sig['paire']} ({sig['motif']}) — x{sig['levier']}</b><br>
+                        🎯 <b>Entrée :</b> <span class="opt-price">{formater_prix(sig['entree'])} USDT</span> | 
+                        🛑 <b>SL :</b> {formater_prix(sig['sl'])} | 
+                        💰 <b>TP1 :</b> {formater_prix(sig['tp1'])} | 🚀 <b>TP2 :</b> {formater_prix(sig['tp2'])}<br>
+                        <a href="{url_mexc}" target="_blank" class="mexc-btn">🚀 Ouvrir sur MEXC ↗️</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c_action:
+                if st.button(f"⚡ Prendre ({trader_courant})", key=f"take_sc_{sig['paire']}"):
+                    def ouvrir_pos_scalp(c):
+                        c["positions"][f"Scalp_{sig['paire']}"] = {
+                            "strategie": "⚡ Scalping 1m",
+                            "paire": sig["paire"],
+                            "sens": sig["sens"],
+                            "motif": sig["motif"],
+                            "entree": sig["entree"],
+                            "sl": sig["sl"],
+                            "tp1": sig["tp1"],
+                            "tp2": sig["tp2"],
+                            "marge": sig["marge"],
+                            "levier": sig["levier"],
+                            "tp1_hit": False,
+                            "date_open": obtenir_date_heure_paris("%d/%m %H:%M:%S"),
+                            "open_timestamp": time.time(),
+                        }
+                    mettre_a_jour_un_compte(trader_courant, ouvrir_pos_scalp)
+                    st.success(f"Trade Scalp {sig['paire']} pris sur {trader_courant} !")
+
+    if tableau_sc:
+        st.dataframe(pd.DataFrame(tableau_sc), hide_index=True, use_container_width=True, key="df_scalp_unique")
+
+
+@st.fragment(run_every="12s")
+def fragment_portefeuille_racine(trader_courant):
+    comptes_tous = charger_tous_les_comptes_rapide()
+    noms_profils = list(comptes_tous.keys())
+
+    col_prof, col_auto, col_reset = st.columns([2, 2, 1])
+    with col_prof:
+        idx_def = noms_profils.index(trader_courant) if trader_courant in noms_profils else 0
+        profil_inspecte = st.selectbox(
+            "👤 Voir le portefeuille et tous les trades du profil :",
+            noms_profils,
+            index=idx_def,
+            key="select_inspect_profile",
+        )
+
+    c_prof = charger_un_compte(profil_inspecte)
+    bases = charger_paires_radar()
+    prix_mexc_direct = obtenir_prix_live_multi_sources(bases)
+
+    with col_auto:
+        st.write("")
+        etat_auto = st.toggle(
+            f"⚡ Autopilote ICT & Scalping ({profil_inspecte})",
+            value=c_prof.get("auto_actif", False),
+            key=f"auto_toggle_{profil_inspecte}",
+        )
+        if etat_auto != c_prof.get("auto_actif", False):
+            def set_auto_state(c):
+                c["auto_actif"] = etat_auto
+            mettre_a_jour_un_compte(profil_inspecte, set_auto_state)
+            st.rerun()
+
+    with col_reset:
+        st.write("")
+        if st.button("🔄 Reset 1000$", key=f"reset_{profil_inspecte}"):
+            def reset_fn(c):
+                init_v = TRADERS_INITIAUX.get(
+                    profil_inspecte,
+                    {"solde": 1000.0, "capital_initial": 1000.0, "total_trades": 0, "total_wins": 0},
+                )
+                c["solde"] = init_v["solde"]
+                c["capital_initial"] = init_v["capital_initial"]
+                c["total_trades"] = init_v["total_trades"]
+                c["total_wins"] = init_v["total_wins"]
+                c["positions"] = {}
+                c["historique"] = []
+            mettre_a_jour_un_compte(profil_inspecte, reset_fn)
+            st.rerun()
+
+    pnl_realise = c_prof["solde"] - c_prof.get("capital_initial", 1000.0)
+    nb_trades = c_prof.get("total_trades", len(c_prof.get("historique", [])))
+    nb_wins = c_prof.get("total_wins", sum(1 for tr in c_prof.get("historique", []) if tr.get("win", False)))
+    winrate = (nb_wins / nb_trades * 100) if nb_trades > 0 else 0.0
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("💰 Solde Réalisé", f"{c_prof['solde']:.2f} USDT")
+    m2.metric("📈 PnL Net", f"{pnl_realise:+.2f} USDT")
+    m3.metric("🎯 Winrate", f"{winrate:.1f}%")
+    m4.metric("📊 Total Trades Exécutés", f"{nb_trades}")
+
+    st.markdown("---")
+
+    st.markdown(f"#### 🚀 Positions Actives en Direct ({profil_inspecte}) :")
+    if c_prof.get("positions"):
+        for cle, pos in list(c_prof["positions"].items()):
+            strat_nom = pos.get("strategie", "⚡ Scalping 1m")
+            paire_nom = pos.get("paire", "SOL/USDT")
+            sens_nom = pos.get("sens", "LONG 🟢")
+            levier_nom = float(pos.get("levier", 50))
+            marge_nom = float(pos.get("marge", 35.0))
+            notionnel = marge_nom * levier_nom
+            entree_val = float(pos.get("entree", 0))
+            sl_val = float(pos.get("sl", 0))
+            tp1_val = float(pos.get("tp1", 0))
+            tp2_val = float(pos.get("tp2", 0))
+            date_ouv = pos.get("date_open", "En cours")
+
+            p_actuel = prix_mexc_direct.get(paire_nom, entree_val)
+            if entree_val > 0:
+                pnl_flottant = (
+                    ((p_actuel - entree_val) / entree_val) * notionnel
+                    if "LONG" in sens_nom
+                    else ((entree_val - p_actuel) / entree_val) * notionnel
+                )
+                roe_flottant = (pnl_flottant / marge_nom) * 100
+            else:
+                pnl_flottant, roe_flottant = 0.0, 0.0
+
+            pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
+            url_mexc_pos = get_mexc_futures_url(paire_nom)
+
+            col_p1, col_p2 = st.columns([4, 1])
+            with col_p1:
+                st.markdown(
+                    f"""
+                    <div class="pos-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <b>[{strat_nom}] {paire_nom} — {sens_nom} (x{int(levier_nom)} | Marge {marge_nom:.0f}$)</b>
+                            <span style="color:{pnl_color}; font-weight:bold; font-size:15px;">
+                                PnL : {pnl_flottant:+.2f} USDT ({roe_flottant:+.1f}%)
+                            </span>
+                        </div>
+                        <hr style="border-color:#30363D; margin:6px 0;">
+                        🎯 <b>Entrée :</b> {formater_prix(entree_val)} | 📍 <b>Cours Actuel :</b> {formater_prix(p_actuel)} | 
+                        🛑 <b>SL :</b> {formater_prix(sl_val)} | 💰 <b>TP1 :</b> {formater_prix(tp1_val)} | 🚀 <b>TP2 :</b> {formater_prix(tp2_val)}<br>
+                        <small style="color:#8B949E;">🕒 Ouvert le : {date_ouv} | Motif : {pos.get('motif', 'Signal Cockpit')}</small><br>
+                        <a href="{url_mexc_pos}" target="_blank" class="mexc-btn">🚀 Gérer sur MEXC ↗️</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with col_p2:
+                if st.button("🛑 Clôturer", key=f"close_{profil_inspecte}_{cle}"):
+                    def couper_pos_profil(c):
+                        if cle in c.get("positions", {}):
+                            c["solde"] += pnl_flottant
+                            c["total_trades"] = c.get("total_trades", 0) + 1
+                            if pnl_flottant >= 0:
+                                c["total_wins"] = c.get("total_wins", 0) + 1
+                            c["historique"].insert(
+                                0,
+                                {
+                                    "date": f"{obtenir_date_heure_paris('%d/%m %H:%M:%S')} (Manuel)",
+                                    "strategie": strat_nom,
+                                    "paire": paire_nom,
+                                    "sens": sens_nom,
+                                    "entree": formater_prix(entree_val),
+                                    "sortie": formater_prix(p_actuel),
+                                    "pnl": round(pnl_flottant, 2),
+                                    "win": pnl_flottant >= 0,
+                                },
+                            )
+                            del c["positions"][cle]
+                    mettre_a_jour_un_compte(profil_inspecte, couper_pos_profil)
+                    st.rerun()
+    else:
+        st.caption(f"👀 Aucune position ouverte en ce moment pour {profil_inspecte}.")
+
+    st.markdown("---")
+
+    historique_complet = c_prof.get("historique", [])
+    st.markdown(f"#### 📜 Historique Intégral des Trades de {profil_inspecte} ({len(historique_complet)} trades enregistrés)")
+
+    if historique_complet:
+        f_col1, f_col2 = st.columns(2)
+        with f_col1:
+            filtre_strat = st.selectbox(
+                "Filtrer par Stratégie :",
+                ["Toutes les stratégies", "💧 ICT", "⚡ Scalping"],
+                key=f"filt_strat_{profil_inspecte}",
+            )
+        with f_col2:
+            filtre_res = st.selectbox(
+                "Filtrer par Résultat :",
+                ["Tous les trades", "Gagnants uniquement ✅", "Perdants uniquement ❌"],
+                key=f"filt_res_{profil_inspecte}",
+            )
+
+        lignes_hist = []
+        for tr in historique_complet:
+            strat_tr = tr.get("strategie", tr.get("strat", "Auto"))
+            win_tr = bool(tr.get("win", tr.get("pnl", 0) >= 0))
+
+            if "ICT" in filtre_strat and "ICT" not in strat_tr:
+                continue
+            if "Scalping" in filtre_strat and "Scalp" not in strat_tr:
+                continue
+            if "Gagnants" in filtre_res and not win_tr:
+                continue
+            if "Perdants" in filtre_res and win_tr:
+                continue
+
+            lignes_hist.append({
+                "Date / Clôture": tr.get("date", "N/A"),
+                "Stratégie": strat_tr,
+                "Paire": tr.get("paire", "N/A"),
+                "Sens": tr.get("sens", "N/A"),
+                "Entrée": tr.get("entree", "-"),
+                "Sortie": tr.get("sortie", "-"),
+                "PnL (USDT)": f"{float(tr.get('pnl', 0)):+.2f} $",
+                "Statut": "✅ WIN" if win_tr else "❌ LOSS",
+            })
+
+        if lignes_hist:
+            df_hist = pd.DataFrame(lignes_hist)
+            st.dataframe(df_hist, hide_index=True, use_container_width=True, height=420, key="df_hist_unique")
+
+            csv_bytes = df_hist.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label=f"📥 Télécharger tous les trades de {profil_inspecte} (.CSV)",
+                data=csv_bytes,
+                file_name=f"trades_{profil_inspecte}.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info("Aucun trade ne correspond à ces filtres.")
+    else:
+        st.info(f"Aucun trade clôturé dans le journal de {profil_inspecte} pour le moment.")
+
+    st.markdown("---")
+    st.markdown("#### 🏆 Comparatif Multi-Profils")
+    liste_classement = []
+    for nom_p, cp in comptes_tous.items():
+        if not isinstance(cp, dict):
+            continue
+        pnl_p = cp.get("solde", 1000.0) - cp.get("capital_initial", 1000.0)
+        tot_t = cp.get("total_trades", len(cp.get("historique", [])))
+        tot_w = cp.get("total_wins", sum(1 for tr in cp.get("historique", []) if tr.get("win", False)))
+        wr_p = (tot_w / tot_t * 100) if tot_t > 0 else 0.0
+        liste_classement.append({
+            "Profil": f"👤 {nom_p}",
+            "Positions Actives": len(cp.get("positions", {})),
+            "Solde Réalisé": f"{cp.get('solde', 1000.0):.2f} $",
+            "PnL Net": f"{pnl_p:+.2f} $",
+            "Winrate": f"{wr_p:.0f}%",
+            "Total Trades": tot_t,
+        })
+    st.dataframe(pd.DataFrame(liste_classement), hide_index=True, use_container_width=True, key="df_rank_unique")
 
 
 # ==========================================================
@@ -881,247 +1299,32 @@ components.html(
     height=52,
 )
 
-
-# ==========================================================
-# 🧠 ENCADRÉ PRIORITAIRE : AGENT GEMINI (ISOLÉ, 0 RELOAD)
-# ==========================================================
-@st.fragment
-def section_agent_gemini_haut():
-    st.markdown('<div class="gemini-box">', unsafe_allow_html=True)
-    c_titre, c_select, c_btn = st.columns([2, 1.5, 1.5])
-    
-    bases_ia = charger_paires_radar()
-    with c_titre:
-        st.markdown("#### 🧠 Agent d'Analyse Gemini (Macro + Technique)")
-        st.caption("Analyse à la demande : Indicateurs techniques + Contexte Macro en direct.")
-    with c_select:
-        crypto_cible = st.selectbox(
-            "Crypto à analyser :",
-            bases_ia,
-            key="gemini_top_select",
-            label_visibility="collapsed",
-        )
-        paire_cible = f"{crypto_cible}/USDT"
-    with c_btn:
-        lancer = st.button(f"🔍 Analyser {paire_cible} en direct", type="primary", use_container_width=True)
-
-    if lancer:
-        with st.spinner(f"Analyse de {paire_cible} en cours (Technique + Macro Web)..."):
-            prix_dict = obtenir_prix_live_multi_sources([crypto_cible])
-            prix_live = prix_dict.get(paire_cible, "N/A")
-            _, df_15 = fetch_single_mexc_kline(crypto_cible, "15m", 30)
-            _, df_1 = fetch_single_mexc_kline(crypto_cible, "1m", 30)
-            
-            rsi_15_str, range_15_str, rsi_1_str = "50.0", "N/A", "50.0"
-            if df_15 is not None and len(df_15) >= 15:
-                rsi_15_str = f"{float(calculer_rsi_series(df_15['Close'], 14).iloc[-1]):.1f}"
-                range_15_str = f"[{formater_prix(df_15['Low'].min())} - {formater_prix(df_15['High'].max())}]"
-            if df_1 is not None and len(df_1) >= 15:
-                rsi_1_str = f"{float(calculer_rsi_series(df_1['Close'], 7).iloc[-1]):.1f}"
-
-            st.session_state.dernier_rapport_ia = analyser_marche_avec_gemini(
-                paire_cible, prix_live, rsi_1_str, rsi_15_str, range_15_str
-            )
-            st.session_state.derniere_paire_ia = paire_cible
-
-    rapport = st.session_state.get("dernier_rapport_ia")
-    paire_rap = st.session_state.get("derniere_paire_ia", "")
-    if rapport:
-        if "erreur" in rapport:
-            st.error(rapport["erreur"])
-        else:
-            reco = rapport.get("recommandation", "ATTENTE")
-            couleur_reco = "#00E676" if reco == "ACHAT" else "#FF1744" if reco == "VENTE" else "#FFB300"
-            st.markdown(
-                f"""
-                <div style="background-color:#080B10; border-left: 4px solid {couleur_reco}; border-radius: 6px; padding: 12px; margin-top: 8px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-                        <span style="font-size:16px; font-weight:bold; color:{couleur_reco};">
-                            🎯 [{paire_rap}] Signal IA : {reco}
-                        </span>
-                        <span style="background-color:#161B22; padding:3px 8px; border-radius:4px; font-size:12px;">
-                            Confiance : <b>{rapport.get('confiance', 0)}%</b>
-                        </span>
-                    </div>
-                    <div style="font-size:13px; margin-bottom:4px;"><b>📊 Technique :</b> {rapport.get('analyse_technique', '')}</div>
-                    <div style="font-size:13px; margin-bottom:4px;"><b>🌍 Macro & News :</b> {rapport.get('analyse_macro', '')}</div>
-                    <div style="font-size:13px; color:#FFD700;"><b>💡 Plan d'action :</b> {rapport.get('justification', '')}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
+# Affichage de l'Agent Gemini en haut de page
 section_agent_gemini_haut()
 
 
 # ==========================================================
-# 🗂️ LES 4 ONGLETS PRINCIPAUX (ÉPURÉS & STATIQUES)
+# 🗂️ NAVIGATION PRINCIPALE (SANS EMPILAGE DE TABLEAUX)
 # ==========================================================
-tab_ict, tab_scalp, tab_macro, tab_trades = st.tabs([
-    "💧 ICT (Smart Money 15m)",
-    "⚡ Scanner Scalping (1m)",
-    "🌍 Macro Globale (Courbes Live)",
-    f"📜 Trades & Portefeuille ({trader_courant})",
-])
+onglet_actif = st.radio(
+    "Navigation Cockpit :",
+    [
+        "💧 ICT (Smart Money 15m)",
+        "⚡ Scanner Scalping (1m)",
+        "🌍 Macro Globale (Courbes Live)",
+        f"📜 Trades & Portefeuille ({trader_courant})",
+    ],
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
+if onglet_actif == "💧 ICT (Smart Money 15m)":
+    fragment_ict_racine(trader_courant)
 
-# ==========================================================
-# ONGLET 1 : 💧 ICT SMART MONEY (15M)
-# ==========================================================
-with tab_ict:
-    col_ict_head1, col_ict_head2 = st.columns([3, 1])
-    with col_ict_head1:
-        st.markdown("#### 💧 Scanner ICT (15m) : 1. Sweep Liquidité ➔ 2. MSS ➔ 3. FVG")
-    with col_ict_head2:
-        auto_ict = st.toggle("🔄 Scan Live (15s)", value=True, key="toggle_live_ict")
+elif onglet_actif == "⚡ Scanner Scalping (1m)":
+    fragment_scalp_racine(trader_courant)
 
-    @st.fragment(run_every="15s" if auto_ict else None)
-    def render_ict_scanner():
-        bases = charger_paires_radar()
-        donnees = charger_donnees_marche_globales(bases)
-        prix_mexc = obtenir_prix_live_multi_sources(bases)
-        signaux_ict, resume_ict = scanner_marche_ict(donnees, bases)
-        signaux_sc, _ = scanner_scalping_1m(donnees, bases)
-
-        # Synchronise automatiquement les trades du profil
-        synchroniser_trades_du_profil(trader_courant, prix_mexc, signaux_ict, signaux_sc)
-
-        if signaux_ict:
-            for sig in signaux_ict:
-                is_long = "LONG" in sig["sens"]
-                couleur = "#00E676" if is_long else "#FF1744"
-                classe_carte = "alert-card-long" if is_long else "alert-card-short"
-                url_mexc = get_mexc_futures_url(sig["paire"])
-
-                c_ict1, c_ict2 = st.columns([4, 1])
-                with c_ict1:
-                    st.markdown(
-                        f"""
-                        <div class="{classe_carte}">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <span style="font-size:16px; font-weight:bold; color:{couleur};">
-                                    💧 {sig['paire']} — {sig['sens']} (Levier x{sig['levier']})
-                                </span>
-                                <span class="timer-badge">{sig['motif']}</span>
-                            </div>
-                            <hr style="border-color:rgba(255,255,255,0.1); margin:8px 0;">
-                            🎯 <b>Entrée Limit (FVG) :</b> <span class="opt-price">{formater_prix(sig['entree'])} USDT</span> (Actuel : {formater_prix(sig['prix_actuel'])})<br>
-                            🛑 <b>Stop-Loss :</b> {formater_prix(sig['sl'])} USDT | 
-                            💰 <b>TP1 :</b> {formater_prix(sig['tp1'])} | 🚀 <b>TP2 :</b> <span style="color:#00E676; font-weight:bold;">{formater_prix(sig['tp2'])} USDT</span><br>
-                            <a href="{url_mexc}" target="_blank" class="mexc-btn">🚀 Ouvrir sur MEXC Futures ↗️</a>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                with c_ict2:
-                    if st.button(f"💧 Prendre sur {trader_courant}", key=f"take_ict_{sig['paire']}"):
-                        def ouvrir_pos_ict(c):
-                            c["positions"][f"ICT_{sig['paire']}"] = {
-                                "strategie": "💧 ICT 15m",
-                                "paire": sig["paire"],
-                                "sens": sig["sens"],
-                                "motif": sig["motif"],
-                                "entree": sig["entree"],
-                                "sl": sig["sl"],
-                                "tp1": sig["tp1"],
-                                "tp2": sig["tp2"],
-                                "marge": sig["marge"],
-                                "levier": sig["levier"],
-                                "tp1_hit": False,
-                                "date_open": obtenir_date_heure_paris("%d/%m %H:%M:%S"),
-                                "open_timestamp": time.time(),
-                            }
-                        mettre_a_jour_un_compte(trader_courant, ouvrir_pos_ict)
-                        st.success(f"Trade ICT {sig['paire']} enregistré sur {trader_courant} !")
-        else:
-            st.markdown(
-                """
-                <div style="background-color:#0D1117; border-radius:8px; padding:14px; text-align:center; border:1px dashed #30363D; margin-bottom:12px;">
-                    <span style="color:#8B949E;">⚪ Aucun alignement complet (Sweep + MSS + FVG) sur la bougie actuelle. État des paires en direct :</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        if resume_ict:
-            st.dataframe(pd.DataFrame(resume_ict), hide_index=True, use_container_width=True)
-
-    render_ict_scanner()
-
-
-# ==========================================================
-# ONGLET 2 : ⚡ SCANNER SCALPING (1M)
-# ==========================================================
-with tab_scalp:
-    col_sc1, col_sc2 = st.columns([3, 1])
-    with col_sc1:
-        st.markdown("#### ⚡ Radar Scalping (1m) : Cassure de structure + Pic de Volume / FVG")
-    with col_sc2:
-        auto_scalp = st.toggle("🔄 Scan Live (12s)", value=True, key="toggle_live_scalp")
-
-    @st.fragment(run_every="12s" if auto_scalp else None)
-    def render_scalp_scanner():
-        bases = charger_paires_radar()
-        donnees = charger_donnees_marche_globales(bases)
-        prix_mexc = obtenir_prix_live_multi_sources(bases)
-        signaux_ict, _ = scanner_marche_ict(donnees, bases)
-        signaux_sc, tableau_sc = scanner_scalping_1m(donnees, bases)
-
-        synchroniser_trades_du_profil(trader_courant, prix_mexc, signaux_ict, signaux_sc)
-
-        if signaux_sc:
-            for sig in signaux_sc:
-                is_long = "LONG" in sig["sens"]
-                classe = "alert-card-long" if is_long else "alert-card-short"
-                url_mexc = get_mexc_futures_url(sig["paire"])
-
-                c_card, c_action = st.columns([4, 1])
-                with c_card:
-                    st.markdown(
-                        f"""
-                        <div class="{classe}">
-                            <b>⚡ {sig['sens']} : {sig['paire']} ({sig['motif']}) — x{sig['levier']}</b><br>
-                            🎯 <b>Entrée :</b> <span class="opt-price">{formater_prix(sig['entree'])} USDT</span> | 
-                            🛑 <b>SL :</b> {formater_prix(sig['sl'])} | 
-                            💰 <b>TP1 :</b> {formater_prix(sig['tp1'])} | 🚀 <b>TP2 :</b> {formater_prix(sig['tp2'])}<br>
-                            <a href="{url_mexc}" target="_blank" class="mexc-btn">🚀 Ouvrir sur MEXC ↗️</a>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                with c_action:
-                    if st.button(f"⚡ Prendre sur {trader_courant}", key=f"take_sc_{sig['paire']}"):
-                        def ouvrir_pos_scalp(c):
-                            c["positions"][f"Scalp_{sig['paire']}"] = {
-                                "strategie": "⚡ Scalping 1m",
-                                "paire": sig["paire"],
-                                "sens": sig["sens"],
-                                "motif": sig["motif"],
-                                "entree": sig["entree"],
-                                "sl": sig["sl"],
-                                "tp1": sig["tp1"],
-                                "tp2": sig["tp2"],
-                                "marge": sig["marge"],
-                                "levier": sig["levier"],
-                                "tp1_hit": False,
-                                "date_open": obtenir_date_heure_paris("%d/%m %H:%M:%S"),
-                                "open_timestamp": time.time(),
-                            }
-                        mettre_a_jour_un_compte(trader_courant, ouvrir_pos_scalp)
-                        st.success(f"Trade Scalp {sig['paire']} pris sur {trader_courant} !")
-
-        if tableau_sc:
-            st.dataframe(pd.DataFrame(tableau_sc), hide_index=True, use_container_width=True)
-
-    render_scalp_scanner()
-
-
-# ==========================================================
-# ONGLET 3 : 🌍 MACRO GLOBALE (COURBES TRADINGVIEW EN DIRECT)
-# ==========================================================
-with tab_macro:
+elif onglet_actif == "🌍 Macro Globale (Courbes Live)":
     st.markdown("#### 🌍 Courbes Macro-Économiques en Temps Réel (Flux WebSocket Direct)")
     st.caption("Visualise en un coup d'œil la tendance du Pétrole, du S&P 500, du Nasdaq, du CAC 40, de l'Or, de l'Euro et du VIX sans aucun rechargement.")
 
@@ -1209,232 +1412,5 @@ with tab_macro:
             height=610,
         )
 
-
-# ==========================================================
-# ONGLET 4 : 📜 TOUS LES TRADES & PORTEFEUILLE PAR PROFIL
-# ==========================================================
-with tab_trades:
-    @st.fragment(run_every="12s")
-    def render_portefeuille_et_journal():
-        comptes_tous = charger_tous_les_comptes_rapide()
-        noms_profils = list(comptes_tous.keys())
-
-        # Sélecteur permettant d'inspecter les trades de n'importe quel profil
-        col_prof, col_auto, col_reset = st.columns([2, 2, 1])
-        with col_prof:
-            idx_def = noms_profils.index(trader_courant) if trader_courant in noms_profils else 0
-            profil_inspecte = st.selectbox(
-                "👤 Voir le portefeuille et tous les trades du profil :",
-                noms_profils,
-                index=idx_def,
-                key="select_inspect_profile",
-            )
-
-        c_prof = charger_un_compte(profil_inspecte)
-        bases = charger_paires_radar()
-        prix_mexc_direct = obtenir_prix_live_multi_sources(bases)
-
-        with col_auto:
-            st.write("")
-            etat_auto = st.toggle(
-                f"⚡ Autopilote ICT & Scalping ({profil_inspecte})",
-                value=c_prof.get("auto_actif", False),
-                key=f"auto_toggle_{profil_inspecte}",
-            )
-            if etat_auto != c_prof.get("auto_actif", False):
-                def set_auto_state(c):
-                    c["auto_actif"] = etat_auto
-                mettre_a_jour_un_compte(profil_inspecte, set_auto_state)
-                st.rerun()
-
-        with col_reset:
-            st.write("")
-            if st.button("🔄 Reset 1000$", key=f"reset_{profil_inspecte}"):
-                def reset_fn(c):
-                    init_v = TRADERS_INITIAUX.get(
-                        profil_inspecte,
-                        {"solde": 1000.0, "capital_initial": 1000.0, "total_trades": 0, "total_wins": 0},
-                    )
-                    c["solde"] = init_v["solde"]
-                    c["capital_initial"] = init_v["capital_initial"]
-                    c["total_trades"] = init_v["total_trades"]
-                    c["total_wins"] = init_v["total_wins"]
-                    c["positions"] = {}
-                    c["historique"] = []
-                mettre_a_jour_un_compte(profil_inspecte, reset_fn)
-                st.rerun()
-
-        # Bandeau de statistiques du profil sélectionné
-        pnl_realise = c_prof["solde"] - c_prof.get("capital_initial", 1000.0)
-        nb_trades = c_prof.get("total_trades", len(c_prof.get("historique", [])))
-        nb_wins = c_prof.get("total_wins", sum(1 for tr in c_prof.get("historique", []) if tr.get("win", False)))
-        winrate = (nb_wins / nb_trades * 100) if nb_trades > 0 else 0.0
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💰 Solde Réalisé", f"{c_prof['solde']:.2f} USDT")
-        m2.metric("📈 PnL Net", f"{pnl_realise:+.2f} USDT")
-        m3.metric("🎯 Winrate", f"{winrate:.1f}%")
-        m4.metric("📊 Total Trades Exécutés", f"{nb_trades}")
-
-        st.markdown("---")
-
-        # 1. POSITIONS OUVERTES EN DIRECT DU PROFIL
-        st.markdown(f"#### 🚀 Positions Actives en Direct ({profil_inspecte}) :")
-        if c_prof.get("positions"):
-            for cle, pos in list(c_prof["positions"].items()):
-                strat_nom = pos.get("strategie", "⚡ Scalping 1m")
-                paire_nom = pos.get("paire", "SOL/USDT")
-                sens_nom = pos.get("sens", "LONG 🟢")
-                levier_nom = float(pos.get("levier", 50))
-                marge_nom = float(pos.get("marge", 35.0))
-                notionnel = marge_nom * levier_nom
-                entree_val = float(pos.get("entree", 0))
-                sl_val = float(pos.get("sl", 0))
-                tp1_val = float(pos.get("tp1", 0))
-                tp2_val = float(pos.get("tp2", 0))
-                date_ouv = pos.get("date_open", "En cours")
-
-                p_actuel = prix_mexc_direct.get(paire_nom, entree_val)
-                if entree_val > 0:
-                    pnl_flottant = (
-                        ((p_actuel - entree_val) / entree_val) * notionnel
-                        if "LONG" in sens_nom
-                        else ((entree_val - p_actuel) / entree_val) * notionnel
-                    )
-                    roe_flottant = (pnl_flottant / marge_nom) * 100
-                else:
-                    pnl_flottant, roe_flottant = 0.0, 0.0
-
-                pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
-                url_mexc_pos = get_mexc_futures_url(paire_nom)
-
-                col_p1, col_p2 = st.columns([4, 1])
-                with col_p1:
-                    st.markdown(
-                        f"""
-                        <div class="pos-card">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <b>[{strat_nom}] {paire_nom} — {sens_nom} (x{int(levier_nom)} | Marge {marge_nom:.0f}$)</b>
-                                <span style="color:{pnl_color}; font-weight:bold; font-size:15px;">
-                                    PnL : {pnl_flottant:+.2f} USDT ({roe_flottant:+.1f}%)
-                                </span>
-                            </div>
-                            <hr style="border-color:#30363D; margin:6px 0;">
-                            🎯 <b>Entrée :</b> {formater_prix(entree_val)} | 📍 <b>Cours Actuel :</b> {formater_prix(p_actuel)} | 
-                            🛑 <b>SL :</b> {formater_prix(sl_val)} | 💰 <b>TP1 :</b> {formater_prix(tp1_val)} | 🚀 <b>TP2 :</b> {formater_prix(tp2_val)}<br>
-                            <small style="color:#8B949E;">🕒 Ouvert le : {date_ouv} | Motif : {pos.get('motif', 'Signal Cockpit')}</small><br>
-                            <a href="{url_mexc_pos}" target="_blank" class="mexc-btn">🚀 Gérer sur MEXC ↗️</a>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                with col_p2:
-                    if st.button("🛑 Clôturer", key=f"close_{profil_inspecte}_{cle}"):
-                        def couper_pos_profil(c):
-                            if cle in c.get("positions", {}):
-                                c["solde"] += pnl_flottant
-                                c["total_trades"] = c.get("total_trades", 0) + 1
-                                if pnl_flottant >= 0:
-                                    c["total_wins"] = c.get("total_wins", 0) + 1
-                                c["historique"].insert(
-                                    0,
-                                    {
-                                        "date": f"{obtenir_date_heure_paris('%d/%m %H:%M:%S')} (Manuel)",
-                                        "strategie": strat_nom,
-                                        "paire": paire_nom,
-                                        "sens": sens_nom,
-                                        "entree": formater_prix(entree_val),
-                                        "sortie": formater_prix(p_actuel),
-                                        "pnl": round(pnl_flottant, 2),
-                                        "win": pnl_flottant >= 0,
-                                    },
-                                )
-                                del c["positions"][cle]
-                        mettre_a_jour_un_compte(profil_inspecte, couper_pos_profil)
-                        st.rerun()
-        else:
-            st.caption(f"👀 Aucune position ouverte en ce moment pour {profil_inspecte}.")
-
-        st.markdown("---")
-
-        # 2. HISTORIQUE COMPLET DE TOUS LES TRADES DU PROFIL (SANS LIMITE)
-        historique_complet = c_prof.get("historique", [])
-        st.markdown(f"#### 📜 Historique Intégral des Trades de {profil_inspecte} ({len(historique_complet)} trades enregistrés)")
-
-        if historique_complet:
-            f_col1, f_col2 = st.columns(2)
-            with f_col1:
-                filtre_strat = st.selectbox(
-                    "Filtrer par Stratégie :",
-                    ["Toutes les stratégies", "💧 ICT", "⚡ Scalping"],
-                    key=f"filt_strat_{profil_inspecte}",
-                )
-            with f_col2:
-                filtre_res = st.selectbox(
-                    "Filtrer par Résultat :",
-                    ["Tous les trades", "Gagnants uniquement ✅", "Perdants uniquement ❌"],
-                    key=f"filt_res_{profil_inspecte}",
-                )
-
-            lignes_hist = []
-            for tr in historique_complet:
-                strat_tr = tr.get("strategie", tr.get("strat", "Auto"))
-                win_tr = bool(tr.get("win", tr.get("pnl", 0) >= 0))
-
-                if "ICT" in filtre_strat and "ICT" not in strat_tr:
-                    continue
-                if "Scalping" in filtre_strat and "Scalp" not in strat_tr:
-                    continue
-                if "Gagnants" in filtre_res and not win_tr:
-                    continue
-                if "Perdants" in filtre_res and win_tr:
-                    continue
-
-                lignes_hist.append({
-                    "Date / Clôture": tr.get("date", "N/A"),
-                    "Stratégie": strat_tr,
-                    "Paire": tr.get("paire", "N/A"),
-                    "Sens": tr.get("sens", "N/A"),
-                    "Entrée": tr.get("entree", "-"),
-                    "Sortie": tr.get("sortie", "-"),
-                    "PnL (USDT)": f"{float(tr.get('pnl', 0)):+.2f} $",
-                    "Statut": "✅ WIN" if win_tr else "❌ LOSS",
-                })
-
-            if lignes_hist:
-                df_hist = pd.DataFrame(lignes_hist)
-                st.dataframe(df_hist, hide_index=True, use_container_width=True, height=420)
-
-                csv_bytes = df_hist.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label=f"📥 Télécharger tous les trades de {profil_inspecte} (.CSV)",
-                    data=csv_bytes,
-                    file_name=f"trades_{profil_inspecte}.csv",
-                    mime="text/csv",
-                )
-            else:
-                st.info("Aucun trade ne correspond à ces filtres.")
-        else:
-            st.info(f"Aucun trade clôturé dans le journal de {profil_inspecte} pour le moment.")
-
-        st.markdown("---")
-        st.markdown("#### 🏆 Comparatif Multi-Profils")
-        liste_classement = []
-        for nom_p, cp in comptes_tous.items():
-            if not isinstance(cp, dict):
-                continue
-            pnl_p = cp.get("solde", 1000.0) - cp.get("capital_initial", 1000.0)
-            tot_t = cp.get("total_trades", len(cp.get("historique", [])))
-            tot_w = cp.get("total_wins", sum(1 for tr in cp.get("historique", []) if tr.get("win", False)))
-            wr_p = (tot_w / tot_t * 100) if tot_t > 0 else 0.0
-            liste_classement.append({
-                "Profil": f"👤 {nom_p}",
-                "Positions Actives": len(cp.get("positions", {})),
-                "Solde Réalisé": f"{cp.get('solde', 1000.0):.2f} $",
-                "PnL Net": f"{pnl_p:+.2f} $",
-                "Winrate": f"{wr_p:.0f}%",
-                "Total Trades": tot_t,
-            })
-        st.dataframe(pd.DataFrame(liste_classement), hide_index=True, use_container_width=True)
-
-    render_portefeuille_et_journal()
+else:
+    fragment_portefeuille_racine(trader_courant)
