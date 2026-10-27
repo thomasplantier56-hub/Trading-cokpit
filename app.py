@@ -147,6 +147,11 @@ I18N = {
         "trend_bull": "🟢 Haussière",
         "trend_bear": "🔴 Baissière",
         "scanning": "⚪ En veille",
+        "ai_signal": "Signal IA :",
+        "confidence": "Confiance :",
+        "lbl_technical": "📊 Technique :",
+        "lbl_macro": "🌍 Macro & News :",
+        "lbl_plan": "💡 Plan d'action :",
     },
     "EN": {
         "cockpit_title": "Cockpit Pro",
@@ -212,6 +217,11 @@ I18N = {
         "trend_bull": "🟢 Bullish",
         "trend_bear": "🔴 Bearish",
         "scanning": "⚪ Scanning",
+        "ai_signal": "AI Signal:",
+        "confidence": "Confidence:",
+        "lbl_technical": "📊 Technical:",
+        "lbl_macro": "🌍 Macro & News:",
+        "lbl_plan": "💡 Action Plan:",
     },
 }
 
@@ -520,9 +530,9 @@ def calculer_rsi_series(series, period=14):
 
 
 # ==========================================================
-# 🤖 AGENT DE TRADING GEMINI (MACRO + TECHNIQUE)
+# 🤖 AGENT DE TRADING GEMINI (MACRO + TECHNIQUE MULTILINGUE)
 # ==========================================================
-def analyser_marche_avec_gemini(paire, prix_actuel, rsi_1m, rsi_15m, range_15m):
+def analyser_marche_avec_gemini(paire, prix_actuel, rsi_1m, rsi_15m, range_15m, langue="FR"):
     api_key = st.secrets.get("GEMINI_API_KEY", "VOTRE_CLE_API_ICI")
     if api_key == "VOTRE_CLE_API_ICI":
         return {"erreur": "Clé API Gemini manquante dans les Secrets Streamlit (GEMINI_API_KEY)."}
@@ -531,30 +541,57 @@ def analyser_marche_avec_gemini(paire, prix_actuel, rsi_1m, rsi_15m, range_15m):
         client = genai.Client(api_key=api_key)
         nom_crypto = paire.split("/")[0]
         
-        prompt = f"""
-        Tu es un analyste quantitatif, ICT et macro-économique senior.
-        Analyse la paire {paire} en temps réel.
-        
-        DONNÉES TECHNIQUES ACTUELLES :
-        - Prix : {prix_actuel} USDT
-        - RSI 1m (Scalping) : {rsi_1m}
-        - RSI 15m (Structure ICT) : {rsi_15m}
-        - Range 15m récent : {range_15m}
-        
-        INSTRUCTIONS :
-        1. Utilise Google Search pour vérifier les actualités des dernières 24h sur {nom_crypto} ainsi que le contexte macro-économique (S&P 500, Nasdaq, Pétrole, VIX, Dollar/Taux).
-        2. Évalue si le flux macro est favorable (Risk-On) ou dangereux (Risk-Off) pour {nom_crypto}.
-        3. Donne une instruction claire.
-        
-        Réponds OBLIGATOIREMENT en JSON valide avec cette structure exacte :
-        {{
-            "recommandation": "ACHAT" | "VENTE" | "ATTENTE",
-            "confiance": entier entre 0 et 100,
-            "analyse_technique": "Diagnostic technique précis (1 à 2 phrases)",
-            "analyse_macro": "Contexte macro (S&P, Pétrole, VIX, news crypto) en direct (2 phrases)",
-            "justification": "Plan d'action concret et niveaux à surveiller"
-        }}
-        """
+        # Adaptation de la consigne selon la langue sélectionnée
+        if langue == "EN":
+            prompt = f"""
+            You are a senior quantitative, ICT, and macroeconomic analyst.
+            Analyze the {paire} pair in real time.
+            
+            CURRENT TECHNICAL DATA:
+            - Price: {prix_actuel} USDT
+            - 1m RSI (Scalping): {rsi_1m}
+            - 15m RSI (ICT Structure): {rsi_15m}
+            - Recent 15m Range: {range_15m}
+            
+            INSTRUCTIONS:
+            1. Use Google Search to check the last 24h news regarding {nom_crypto} and the global macroeconomic environment (S&P 500, Nasdaq, Oil, VIX, US Dollar/Treasury yields).
+            2. Determine whether the macro flow is favorable (Risk-On) or dangerous (Risk-Off) for {nom_crypto}.
+            3. Write your entire analysis in fluent ENGLISH.
+            
+            You MUST reply in valid JSON with this exact structure:
+            {{
+                "recommandation": "BUY" | "SELL" | "WAIT",
+                "confiance": integer between 0 and 100,
+                "analyse_technique": "Precise technical diagnosis in English (1 to 2 sentences)",
+                "analyse_macro": "Live macro context (S&P, Oil, VIX, crypto news) in English (2 sentences)",
+                "justification": "Concrete action plan and key levels in English"
+            }}
+            """
+        else:
+            prompt = f"""
+            Tu es un analyste quantitatif, ICT et macro-économique senior.
+            Analyse la paire {paire} en temps réel.
+            
+            DONNÉES TECHNIQUES ACTUELLES :
+            - Prix : {prix_actuel} USDT
+            - RSI 1m (Scalping) : {rsi_1m}
+            - RSI 15m (Structure ICT) : {rsi_15m}
+            - Range 15m récent : {range_15m}
+            
+            INSTRUCTIONS :
+            1. Utilise Google Search pour vérifier les actualités des dernières 24h sur {nom_crypto} ainsi que le contexte macro-économique (S&P 500, Nasdaq, Pétrole, VIX, Dollar/Taux).
+            2. Évalue si le flux macro est favorable (Risk-On) ou dangereux (Risk-Off) pour {nom_crypto}.
+            3. Donne une instruction claire en FRANÇAIS.
+            
+            Réponds OBLIGATOIREMENT en JSON valide avec cette structure exacte :
+            {{
+                "recommandation": "ACHAT" | "VENTE" | "ATTENTE",
+                "confiance": entier entre 0 et 100,
+                "analyse_technique": "Diagnostic technique précis en français (1 à 2 phrases)",
+                "analyse_macro": "Contexte macro (S&P, Pétrole, VIX, news crypto) en direct en français (2 phrases)",
+                "justification": "Plan d'action concret et niveaux à surveiller en français"
+            }}
+            """
         
         response = client.models.generate_content(
             model="gemini-3.8-flash",
@@ -970,7 +1007,7 @@ def section_agent_gemini_haut():
         lancer = st.button(t("analyze_btn", pair=paire_cible), type="primary", use_container_width=True)
 
     if lancer:
-        with st.spinner(f"Analyse de {paire_cible} en cours..."):
+        with st.spinner(f"Analyzing {paire_cible}..." if LANG == "EN" else f"Analyse de {paire_cible} en cours..."):
             prix_dict = obtenir_prix_live_multi_sources([crypto_cible])
             prix_live = prix_dict.get(paire_cible, "N/A")
             _, df_15 = fetch_single_mexc_kline(crypto_cible, "15m", 30)
@@ -983,8 +1020,9 @@ def section_agent_gemini_haut():
             if df_1 is not None and len(df_1) >= 15:
                 rsi_1_str = f"{float(calculer_rsi_series(df_1['Close'], 7).iloc[-1]):.1f}"
 
+            # Transmission de la langue actuelle (FR ou EN) au prompt
             st.session_state.dernier_rapport_ia = analyser_marche_avec_gemini(
-                paire_cible, prix_live, rsi_1_str, rsi_15_str, range_15_str
+                paire_cible, prix_live, rsi_1_str, rsi_15_str, range_15_str, langue=LANG
             )
             st.session_state.derniere_paire_ia = paire_cible
 
@@ -994,22 +1032,25 @@ def section_agent_gemini_haut():
         if "erreur" in rapport:
             st.error(rapport["erreur"])
         else:
-            reco = rapport.get("recommandation", "ATTENTE")
-            couleur_reco = "#00E676" if reco == "ACHAT" else "#FF1744" if reco == "VENTE" else "#FFB300"
+            reco = str(rapport.get("recommandation", "WAIT" if LANG == "EN" else "ATTENTE")).upper()
+            is_buy = "BUY" in reco or "ACHAT" in reco
+            is_sell = "SELL" in reco or "VENTE" in reco
+            couleur_reco = "#00E676" if is_buy else "#FF1744" if is_sell else "#FFB300"
+            
             st.markdown(
                 f"""
                 <div style="background-color:#080B10; border-left: 4px solid {couleur_reco}; border-radius: 6px; padding: 12px; margin-top: 8px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
                         <span style="font-size:16px; font-weight:bold; color:{couleur_reco};">
-                            🎯 [{paire_rap}] Signal IA : {reco}
+                            🎯 [{paire_rap}] {t('ai_signal')} {reco}
                         </span>
                         <span style="background-color:#161B22; padding:3px 8px; border-radius:4px; font-size:12px;">
-                            Confiance : <b>{rapport.get('confiance', 0)}%</b>
+                            {t('confidence')} <b>{rapport.get('confiance', 0)}%</b>
                         </span>
                     </div>
-                    <div style="font-size:13px; margin-bottom:4px;"><b>📊 Technique :</b> {rapport.get('analyse_technique', '')}</div>
-                    <div style="font-size:13px; margin-bottom:4px;"><b>🌍 Macro & News :</b> {rapport.get('analyse_macro', '')}</div>
-                    <div style="font-size:13px; color:#FFD700;"><b>💡 Plan d'action :</b> {rapport.get('justification', '')}</div>
+                    <div style="font-size:13px; margin-bottom:4px;"><b>{t('lbl_technical')}</b> {rapport.get('analyse_technique', '')}</div>
+                    <div style="font-size:13px; margin-bottom:4px;"><b>{t('lbl_macro')}</b> {rapport.get('analyse_macro', '')}</div>
+                    <div style="font-size:13px; color:#FFD700;"><b>{t('lbl_plan')}</b> {rapport.get('justification', '')}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1056,7 +1097,8 @@ def fragment_ict_racine(trader_courant):
                     unsafe_allow_html=True,
                 )
             with c_ict2:
-                if st.button(f"💧 Prendre ({trader_courant})", key=f"take_ict_{sig['paire']}"):
+                btn_take_lbl = f"💧 Take ({trader_courant})" if LANG == "EN" else f"💧 Prendre ({trader_courant})"
+                if st.button(btn_take_lbl, key=f"take_ict_{sig['paire']}"):
                     def ouvrir_pos_ict(c):
                         c["positions"][f"ICT_{sig['paire']}"] = {
                             "strategie": "💧 ICT 15m",
@@ -1074,7 +1116,7 @@ def fragment_ict_racine(trader_courant):
                             "open_timestamp": time.time(),
                         }
                     mettre_a_jour_un_compte(trader_courant, ouvrir_pos_ict)
-                    st.success(f"Trade ICT {sig['paire']} enregistré sur {trader_courant} !")
+                    st.success(f"Trade ICT {sig['paire']} OK !")
     else:
         st.markdown(
             f"""
@@ -1121,7 +1163,8 @@ def fragment_scalp_racine(trader_courant):
                     unsafe_allow_html=True,
                 )
             with c_action:
-                if st.button(f"⚡ Prendre ({trader_courant})", key=f"take_sc_{sig['paire']}"):
+                btn_take_sc_lbl = f"⚡ Take ({trader_courant})" if LANG == "EN" else f"⚡ Prendre ({trader_courant})"
+                if st.button(btn_take_sc_lbl, key=f"take_sc_{sig['paire']}"):
                     def ouvrir_pos_scalp(c):
                         c["positions"][f"Scalp_{sig['paire']}"] = {
                             "strategie": "⚡ Scalping 1m",
@@ -1139,7 +1182,7 @@ def fragment_scalp_racine(trader_courant):
                             "open_timestamp": time.time(),
                         }
                     mettre_a_jour_un_compte(trader_courant, ouvrir_pos_scalp)
-                    st.success(f"Trade Scalp {sig['paire']} pris sur {trader_courant} !")
+                    st.success(f"Trade Scalp {sig['paire']} OK !")
 
     if tableau_sc:
         st.dataframe(pd.DataFrame(tableau_sc), hide_index=True, use_container_width=True, key="df_scalp_unique")
@@ -1230,7 +1273,6 @@ def fragment_portefeuille_racine(trader_courant):
             else:
                 pnl_flottant, roe_flottant = 0.0, 0.0
 
-            # CORRECTION : pnl_color est maintenant TOUJOURS défini (hors du if/else)
             pnl_color = "#00E676" if pnl_flottant >= 0 else "#FF1744"
             url_mexc_pos = get_mexc_futures_url(paire_nom)
 
